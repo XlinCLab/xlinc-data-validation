@@ -247,13 +247,13 @@ class XDFFile:
         raw_streams, self.header = load_xdf(path, **load_kwargs)
         self.streams = [XDFStream(s) for s in raw_streams]
 
-    def streams_by_type(self, stream_type: str, exclude_name_substring: str = None) -> list[XDFStream]:
-        """Return streams matching a given type, optionally excluding streams whose name
-        contains a given substring (e.g. to exclude impedance-check streams which otherwise
-        share the same type as the real data stream)."""
+    def streams_by_type(self, stream_type: str = None, exclude_name_substring: str = None) -> list[XDFStream]:
+        """Return streams matching a given type (all types if None), optionally excluding
+        streams whose name contains a given substring (e.g. to exclude impedance-check
+        streams which otherwise share the same type as the real data stream)."""
         matches = []
         for stream in self.streams:
-            if stream.type.lower() != str(stream_type).lower():
+            if stream_type is not None and stream.type.lower() != str(stream_type).lower():
                 continue
             if exclude_name_substring is not None and exclude_name_substring.lower() in stream.name.lower():
                 continue
@@ -262,8 +262,8 @@ class XDFFile:
 
     def validate(self, stream_type: str = None, exclude_name_substring: str = None) -> dict:
         """Run sample-timing validation checks across this file's streams (optionally
-        filtered by type). Returns a result dict describing each stream's validation
-        outcome and an overall pass/fail status."""
+        filtered by type and/or excluded by name substring). Returns a result dict
+        describing each stream's validation outcome and an overall pass/fail status."""
         result = {
             "file": self.path,
             "error": None,
@@ -271,13 +271,7 @@ class XDFFile:
             "passed": False,
         }
 
-        if stream_type is not None:
-            streams = self.streams_by_type(
-                stream_type=stream_type,
-                exclude_name_substring=exclude_name_substring
-            )
-        else:
-            streams = self.streams
+        streams = self.streams_by_type(stream_type=stream_type, exclude_name_substring=exclude_name_substring)
 
         if not streams:
             result["error"] = "No matching streams found in file"

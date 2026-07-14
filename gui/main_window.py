@@ -81,7 +81,7 @@ class MainWindow(QMainWindow):
         self.stream_type_input = QLineEdit()
         self.stream_type_input.setPlaceholderText("e.g. EEG (leave blank for all)")
         filter_controls.addWidget(self.stream_type_input)
-        filter_controls.addWidget(QLabel("Exclude name containing:"))
+        filter_controls.addWidget(QLabel("Exclude stream name containing:"))
         self.exclude_input = QLineEdit()
         self.exclude_input.setPlaceholderText("e.g. Impedance")
         filter_controls.addWidget(self.exclude_input)
