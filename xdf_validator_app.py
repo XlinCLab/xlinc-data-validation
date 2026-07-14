@@ -2,7 +2,7 @@
 """Desktop GUI for validating XDF recordings.
 
 Usage:
-    python gui_app.py
+    python xdf_validator_app.py
 """
 
 import sys
