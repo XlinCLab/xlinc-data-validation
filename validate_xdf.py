@@ -16,6 +16,7 @@ import sys
 
 from pyxdf import load_xdf
 
+from constants import STREAM_TIME_STAMPS
 from xdf_utils import (classify_stream_gaps, get_nominal_srate,
                        get_stream_duration, get_stream_hostname,
                        get_stream_name, get_stream_type,
@@ -39,7 +40,7 @@ def validate_stream(
     nominal_srate = get_nominal_srate(stream)
 
     if nominal_srate <= 0:
-        timestamps = stream.get("time_stamps", [])
+        timestamps = stream.get(STREAM_TIME_STAMPS, [])
         duration = get_stream_duration(stream)
         if expected_duration > 0 and duration < 0.5 * expected_duration:
             verdict = "CORRUPT / TOO SHORT"

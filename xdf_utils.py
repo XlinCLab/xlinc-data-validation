@@ -1,7 +1,8 @@
 import numpy as np
 from pyxdf import load_xdf
 
-STREAM_TIMESTAMPS_LABEL = "time_stamps"
+from constants import (INFO_HOSTNAME, INFO_NAME, INFO_NOMINAL_SRATE, INFO_TYPE,
+                       STREAM_INFO, STREAM_TIME_STAMPS)
 
 
 def get_stream_metadata(
@@ -10,7 +11,7 @@ def get_stream_metadata(
         result_type = None,
     ) -> str:
     """Extract field from XDF stream metadata."""
-    result = stream.get("info", {}).get(field, [""])
+    result = stream.get(STREAM_INFO, {}).get(field, [""])
     if isinstance(result, list):
         result = result[0] if result else ""
     if result_type is not None:
@@ -22,7 +23,7 @@ def get_stream_name(stream: dict) -> str:
     """Extract a stream's name from its metadata."""
     return get_stream_metadata(
         stream=stream,
-        field="name",
+        field=INFO_NAME,
         result_type=str,
     )
 
@@ -31,7 +32,7 @@ def get_stream_type(stream: dict) -> str:
     """Extract a stream's type from its metadata."""
     return get_stream_metadata(
         stream=stream,
-        field="type",
+        field=INFO_TYPE,
         result_type=str,
     )
 
@@ -40,7 +41,7 @@ def get_nominal_srate(stream: dict) -> float:
     """Extract a stream's nominal sampling rate from its metadata."""
     return get_stream_metadata(
         stream=stream,
-        field="nominal_srate",
+        field=INFO_NOMINAL_SRATE,
         result_type=float,
     )
 
@@ -49,7 +50,7 @@ def get_stream_hostname(stream: dict) -> str:
     """Extract the hostname of a stream's source recording machine from its metadata."""
     return get_stream_metadata(
         stream=stream,
-        field="hostname",
+        field=INFO_HOSTNAME,
         result_type=str,
     )
 
@@ -70,15 +71,10 @@ def get_xdf_streams_by_type(
         xdf_data, _ = load_xdf(xdf_file, verbose=verbose, **kwargs)
     matches = []
     for stream in xdf_data:
-        stream_type_val = stream.get('info', {}).get('type', "")
-        if isinstance(stream_type_val, list):
-            stream_type_val = stream_type_val[0] if stream_type_val else ""
-        if str(stream_type_val).lower() != str(stream_type).lower():
+        if get_stream_type(stream).lower() != str(stream_type).lower():
             continue
         if exclude_name_substring is not None:
-            stream_name = stream.get('info', {}).get('name', [""])
-            stream_name = stream_name[0] if isinstance(stream_name, list) and stream_name else stream_name
-            if exclude_name_substring.lower() in str(stream_name).lower():
+            if exclude_name_substring.lower() in get_stream_name(stream).lower():
                 continue
         matches.append(stream)
     return matches
@@ -86,7 +82,7 @@ def get_xdf_streams_by_type(
 
 def get_stream_duration(stream: dict) -> float:
     """Extract a stream's time span in seconds from its timestamps."""
-    timestamps = stream.get("time_stamps", [])
+    timestamps = stream.get(STREAM_TIME_STAMPS, [])
     if len(timestamps) < 2:
         return 0.0
     return float(timestamps[-1] - timestamps[0])
@@ -96,7 +92,7 @@ def summarize_stream_gaps(stream: dict) -> dict:
     """Summarize sample-timing quality (gaps, effective vs. nominal rate) for a single
     regularly-sampled stream. Only meaningful for streams with a nonzero nominal sampling
     rate; use get_nominal_srate() to check first."""
-    timestamps = np.asarray(stream["time_stamps"], dtype=np.float64)
+    timestamps = np.asarray(stream[STREAM_TIME_STAMPS], dtype=np.float64)
     nominal_srate = get_nominal_srate(stream)
     n_samples = len(timestamps)
     duration = get_stream_duration(stream)
