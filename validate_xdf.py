@@ -10,6 +10,8 @@ Usage:
 """
 
 import argparse
+import logging
+import os
 import sys
 
 from pyxdf import load_xdf
@@ -17,6 +19,10 @@ from pyxdf import load_xdf
 from xdf_utils import (classify_stream_gaps, get_nominal_srate,
                        get_stream_hostname, get_stream_name, get_stream_type,
                        get_xdf_streams_by_type, summarize_stream_gaps)
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(name)s %(levelname)s: %(message)s')
+logger = logging.getLogger(__name__)
+
 
 FAIL_PREFIXES = ("SEVERE", "CORRUPT", "NO DATA", "FAILED")
 
@@ -125,9 +131,20 @@ def main() -> int:
                          help="Exclude streams whose name contains this substring (e.g. impedance checks)")
     args = parser.parse_args()
 
+    # Filter to existing file paths
+    xdf_files = [
+        os.path.abspath(xdf_file) for xdf_file in args.xdf_files
+        if os.path.exists(os.path.abspath(xdf_file)) and xdf_file.endswith(".xdf")
+    ]
+    if len(xdf_files) > 0:
+        logger.info(f"Validating {len(xdf_files)} XDF files...")
+    else:
+        logger.error("No matching XDF files found.")
+        return
+
     results = [
         validate_xdf_file(f, stream_type=args.stream_type, exclude_name_substring=args.exclude_name_substring)
-        for f in args.xdf_files
+        for f in xdf_files
     ]
     report = format_report(results)
     print(report)
