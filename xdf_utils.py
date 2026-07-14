@@ -4,6 +4,8 @@ from pyxdf import load_xdf
 from constants import (INFO_HOSTNAME, INFO_NAME, INFO_NOMINAL_SRATE, INFO_TYPE,
                        STREAM_INFO, STREAM_TIME_STAMPS)
 
+FAIL_PREFIXES = ("SEVERE", "CORRUPT", "NO DATA", "FAILED")
+
 
 class XDFStream:
     """Wraps a single stream dict as returned by pyxdf.load_xdf(), exposing its metadata
@@ -122,6 +124,37 @@ class XDFStream:
             return "salvageable (few concentrated gaps)"
         return "SEVERE (many/large gaps)"
 
+    def validate(self, expected_duration: float = None) -> dict:
+        """Run the sample-timing checks on this stream and return its result row."""
+        if not self.is_regular:
+            duration = self.duration
+            if expected_duration is not None and expected_duration > 0 and duration < 0.5 * expected_duration:
+                verdict = "CORRUPT / TOO SHORT"
+            else:
+                verdict = "irregular stream (skipped gap check)"
+            return {
+                "name": self.name,
+                "type": self.type,
+                "hostname": self.hostname,
+                "n_samples": self.n_samples,
+                "duration": duration,
+                "effective_srate": 0.0,
+                "nominal_srate": 0.0,
+                "n_gaps": 0,
+                "total_missing": 0,
+                "verdict": verdict,
+            }
+
+        summary = self.summarize_gaps()
+        verdict = self.classify_gaps(expected_duration=expected_duration)
+        return {
+            "name": self.name,
+            "type": self.type,
+            "hostname": self.hostname,
+            "verdict": verdict,
+            **summary
+        }
+
     def __repr__(self):
         return f"XDFStream(name={self.name!r}, type={self.type!r}, hostname={self.hostname!r})"
 
@@ -146,6 +179,34 @@ class XDFFile:
                 continue
             matches.append(stream)
         return matches
+
+    def validate(self, stream_type: str = None, exclude_name_substring: str = None) -> dict:
+        """Run sample-timing validation checks across this file's streams (optionally
+        filtered by type). Returns a result dict describing each stream's validation
+        outcome and an overall pass/fail status."""
+        result = {
+            "file": self.path,
+            "error": None,
+            "streams": [],
+            "passed": False,
+        }
+
+        if stream_type is not None:
+            streams = self.streams_by_type(
+                stream_type=stream_type,
+                exclude_name_substring=exclude_name_substring
+            )
+        else:
+            streams = self.streams
+
+        if not streams:
+            result["error"] = "No matching streams found in file"
+            return result
+
+        expected_duration = max((s.duration for s in streams), default=0.0)
+        result["streams"] = [s.validate(expected_duration) for s in streams]
+        result["passed"] = not any(row["verdict"].startswith(FAIL_PREFIXES) for row in result["streams"])
+        return result
 
     def __repr__(self):
         return f"XDFFile(path={self.path!r}, n_streams={len(self.streams)})"

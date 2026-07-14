@@ -14,48 +14,10 @@ import logging
 import os
 import sys
 
-from xdf_utils import XDFFile, XDFStream
+from xdf_utils import XDFFile
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(name)s %(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
-
-
-FAIL_PREFIXES = ("SEVERE", "CORRUPT", "NO DATA", "FAILED")
-
-
-def validate_stream(
-        stream: XDFStream,
-        expected_duration: float
-    ) -> dict:
-    """Run the sample-timing checks on a single stream and return its result row."""
-    if not stream.is_regular:
-        duration = stream.duration
-        if expected_duration > 0 and duration < 0.5 * expected_duration:
-            verdict = "CORRUPT / TOO SHORT"
-        else:
-            verdict = "irregular stream (skipped gap check)"
-        return {
-            "name": stream.name,
-            "type": stream.type,
-            "hostname": stream.hostname,
-            "n_samples": stream.n_samples,
-            "duration": duration,
-            "effective_srate": 0.0,
-            "nominal_srate": 0.0,
-            "n_gaps": 0,
-            "total_missing": 0,
-            "verdict": verdict,
-        }
-
-    summary = stream.summarize_gaps()
-    verdict = stream.classify_gaps(expected_duration=expected_duration)
-    return {
-        "name": stream.name,
-        "type": stream.type,
-        "hostname": stream.hostname,
-        "verdict": verdict,
-        **summary
-    }
 
 
 def validate_xdf_file(
@@ -65,13 +27,6 @@ def validate_xdf_file(
     ) -> dict:
     """Load and validate a single XDF file. Returns a result dict describing each stream's
     validation outcome and an overall pass/fail status."""
-    result = {
-        "file": xdf_file,
-        "error": None,
-        "streams": [],
-        "passed": False
-    }
-
     try:
         xdf = XDFFile(
             path=xdf_file,
@@ -79,25 +34,17 @@ def validate_xdf_file(
             verbose=False
         )
     except Exception as exc:
-        result["error"] = f"Failed to load XDF file: {exc}"
-        return result
+        return {
+            "file": xdf_file,
+            "error": f"Failed to load XDF file: {exc}",
+            "streams": [],
+            "passed": False,
+        }
 
-    if stream_type is not None:
-        streams = xdf.streams_by_type(
-            stream_type=stream_type,
-            exclude_name_substring=exclude_name_substring
-        )
-    else:
-        streams = xdf.streams
-
-    if not streams:
-        result["error"] = "No matching streams found in file"
-        return result
-
-    expected_duration = max((s.duration for s in streams), default=0.0)
-    result["streams"] = [validate_stream(s, expected_duration) for s in streams]
-    result["passed"] = not any(row["verdict"].startswith(FAIL_PREFIXES) for row in result["streams"])
-    return result
+    return xdf.validate(
+        stream_type=stream_type,
+        exclude_name_substring=exclude_name_substring,
+    )
 
 
 def format_report(results: list[dict]) -> str:
