@@ -7,8 +7,9 @@ from validate_xdf import validate_xdf_file
 
 class ValidationWorker(QThread):
     """Runs validate_xdf_file() for a batch of paths on a background thread, emitting one
-    result dict at a time (file_validated) so the GUI can update incrementally. Emits the
-    inherited QThread.finished signal once every file has been processed."""
+    result dict at a time (file_validated) so the GUI can update incrementally.
+    Emits the inherited QThread.finished signal once processing stops, whether because 
+    every file was processed or because cancellation was requested (see stop())."""
 
     file_validated = pyqtSignal(dict)
 
@@ -24,8 +25,15 @@ class ValidationWorker(QThread):
         self.stream_type = stream_type
         self.exclude_name_substring = exclude_name_substring
 
+    def stop(self):
+        """Request cancellation. Takes effect after the file currently being validated
+        finishes; does not interrupt an in-progress load_xdf() call."""
+        self.requestInterruption()
+
     def run(self):
         for xdf_file in self.xdf_files:
+            if self.isInterruptionRequested():
+                break
             result = validate_xdf_file(
                 xdf_file,
                 stream_type=self.stream_type,

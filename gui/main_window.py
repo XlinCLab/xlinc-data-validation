@@ -5,14 +5,14 @@ import os
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (QFileDialog, QHBoxLayout, QLabel, QLineEdit,
-                              QListWidget, QMainWindow, QMessageBox, QPushButton,
-                              QSplitter, QStatusBar, QTreeWidget, QTreeWidgetItem,
-                              QVBoxLayout, QWidget)
+                             QListWidget, QMainWindow, QMessageBox,
+                             QPushButton, QSplitter, QStatusBar, QTreeWidget,
+                             QTreeWidgetItem, QVBoxLayout, QWidget)
 
 from gui.constants import (DEFAULT_REPORT_FILENAME, RESULT_COLUMNS,
-                            VERDICT_COLOR_FAIL, VERDICT_COLOR_OK,
-                            VERDICT_COLOR_WARN, WARN_SUBSTRINGS, WINDOW_HEIGHT,
-                            WINDOW_TITLE, WINDOW_WIDTH, XDF_FILE_FILTER)
+                           VERDICT_COLOR_FAIL, VERDICT_COLOR_OK,
+                           VERDICT_COLOR_WARN, WARN_SUBSTRINGS, WINDOW_HEIGHT,
+                           WINDOW_TITLE, WINDOW_WIDTH, XDF_FILE_FILTER)
 from gui.worker import ValidationWorker
 from validate_xdf import format_report
 from xdf_utils import FAIL_PREFIXES
@@ -32,6 +32,7 @@ class MainWindow(QMainWindow):
         self.xdf_files: list[str] = []
         self.results: list[dict] = []
         self.worker: ValidationWorker = None
+        self._cancel_requested = False
 
         self._build_ui()
 
@@ -91,10 +92,14 @@ class MainWindow(QMainWindow):
         run_controls = QHBoxLayout()
         self.validate_button = QPushButton("Validate")
         self.validate_button.clicked.connect(self._on_validate)
+        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button.clicked.connect(self._on_cancel)
+        self.cancel_button.setEnabled(False)
         self.save_button = QPushButton("Save Report...")
         self.save_button.clicked.connect(self._on_save_report)
         self.save_button.setEnabled(False)
         run_controls.addWidget(self.validate_button)
+        run_controls.addWidget(self.cancel_button)
         run_controls.addWidget(self.save_button)
         run_controls.addStretch()
         return run_controls
@@ -127,8 +132,8 @@ class MainWindow(QMainWindow):
 
         self.results = []
         self.results_tree.clear()
-        self.validate_button.setEnabled(False)
-        self.save_button.setEnabled(False)
+        self._cancel_requested = False
+        self._set_running(True)
         self.status_bar.showMessage(f"Validating 0/{len(self.xdf_files)} file(s)...")
 
         self.worker = ValidationWorker(
@@ -139,6 +144,25 @@ class MainWindow(QMainWindow):
         self.worker.file_validated.connect(self._on_file_validated)
         self.worker.finished.connect(self._on_validation_finished)
         self.worker.start()
+
+    def _on_cancel(self):
+        if self.worker is not None and self.worker.isRunning():
+            self._cancel_requested = True
+            self.worker.stop()
+            self.cancel_button.setEnabled(False)
+            self.status_bar.showMessage("Cancelling after the current file finishes...")
+
+    def _set_running(self, running: bool):
+        """Toggle controls between "validation in progress" and "idle" states. File-list
+        editing is disabled while running since the worker already took its own snapshot
+        of the file list at start time."""
+        self.validate_button.setEnabled(not running)
+        self.cancel_button.setEnabled(running)
+        self.add_button.setEnabled(not running)
+        self.remove_button.setEnabled(not running)
+        self.clear_button.setEnabled(not running)
+        if running:
+            self.save_button.setEnabled(False)
 
     def _on_file_validated(self, result: dict):
         self.results.append(result)
@@ -187,9 +211,17 @@ class MainWindow(QMainWindow):
 
     def _on_validation_finished(self):
         n_passed = sum(1 for r in self.results if r["passed"])
-        self.status_bar.showMessage(f"Done: {n_passed}/{len(self.results)} file(s) passed validation")
-        self.validate_button.setEnabled(True)
-        self.save_button.setEnabled(True)
+
+        self._set_running(False)
+        self.save_button.setEnabled(bool(self.results))
+
+        if self._cancel_requested:
+            self.status_bar.showMessage(
+                f"Cancelled after {len(self.results)}/{len(self.xdf_files)} file(s) "
+                f"({n_passed} passed)"
+            )
+        else:
+            self.status_bar.showMessage(f"Done: {n_passed}/{len(self.results)} file(s) passed validation")
 
     def _on_save_report(self):
         if not self.results:
