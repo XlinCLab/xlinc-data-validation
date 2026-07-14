@@ -14,13 +14,7 @@ import logging
 import os
 import sys
 
-from pyxdf import load_xdf
-
-from constants import STREAM_TIME_STAMPS
-from xdf_utils import (classify_stream_gaps, get_nominal_srate,
-                       get_stream_duration, get_stream_hostname,
-                       get_stream_name, get_stream_type,
-                       get_xdf_streams_by_type, summarize_stream_gaps)
+from xdf_utils import XDFFile, XDFStream
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(name)s %(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
@@ -30,27 +24,21 @@ FAIL_PREFIXES = ("SEVERE", "CORRUPT", "NO DATA", "FAILED")
 
 
 def validate_stream(
-        stream: dict,
+        stream: XDFStream,
         expected_duration: float
     ) -> dict:
     """Run the sample-timing checks on a single stream and return its result row."""
-    name = get_stream_name(stream)
-    stype = get_stream_type(stream)
-    hostname = get_stream_hostname(stream)
-    nominal_srate = get_nominal_srate(stream)
-
-    if nominal_srate <= 0:
-        timestamps = stream.get(STREAM_TIME_STAMPS, [])
-        duration = get_stream_duration(stream)
+    if not stream.is_regular:
+        duration = stream.duration
         if expected_duration > 0 and duration < 0.5 * expected_duration:
             verdict = "CORRUPT / TOO SHORT"
         else:
             verdict = "irregular stream (skipped gap check)"
         return {
-            "name": name,
-            "type": stype,
-            "hostname": hostname,
-            "n_samples": len(timestamps),
+            "name": stream.name,
+            "type": stream.type,
+            "hostname": stream.hostname,
+            "n_samples": stream.n_samples,
             "duration": duration,
             "effective_srate": 0.0,
             "nominal_srate": 0.0,
@@ -59,12 +47,12 @@ def validate_stream(
             "verdict": verdict,
         }
 
-    summary = summarize_stream_gaps(stream)
-    verdict = classify_stream_gaps(summary, expected_duration=expected_duration)
+    summary = stream.summarize_gaps()
+    verdict = stream.classify_gaps(expected_duration=expected_duration)
     return {
-        "name": name,
-        "type": stype,
-        "hostname": hostname,
+        "name": stream.name,
+        "type": stream.type,
+        "hostname": stream.hostname,
         "verdict": verdict,
         **summary
     }
@@ -85,27 +73,28 @@ def validate_xdf_file(
     }
 
     try:
-        streams, _header = load_xdf(
-            xdf_file,
+        xdf = XDFFile(
+            path=xdf_file,
             synchronize_clocks=True,
-            verbose=False,
+            verbose=False
         )
     except Exception as exc:
         result["error"] = f"Failed to load XDF file: {exc}"
         return result
 
     if stream_type is not None:
-        streams = get_xdf_streams_by_type(
-            stream_type,
-            xdf_data=streams,
-            exclude_name_substring=exclude_name_substring,
+        streams = xdf.streams_by_type(
+            stream_type=stream_type,
+            exclude_name_substring=exclude_name_substring
         )
+    else:
+        streams = xdf.streams
 
     if not streams:
         result["error"] = "No matching streams found in file"
         return result
 
-    expected_duration = max((get_stream_duration(s) for s in streams), default=0.0)
+    expected_duration = max((s.duration for s in streams), default=0.0)
     result["streams"] = [validate_stream(s, expected_duration) for s in streams]
     result["passed"] = not any(row["verdict"].startswith(FAIL_PREFIXES) for row in result["streams"])
     return result

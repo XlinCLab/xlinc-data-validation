@@ -5,154 +5,147 @@ from constants import (INFO_HOSTNAME, INFO_NAME, INFO_NOMINAL_SRATE, INFO_TYPE,
                        STREAM_INFO, STREAM_TIME_STAMPS)
 
 
-def get_stream_metadata(
-        stream: dict,
-        field: str,
-        result_type = None,
-    ) -> str:
-    """Extract field from XDF stream metadata."""
-    result = stream.get(STREAM_INFO, {}).get(field, [""])
-    if isinstance(result, list):
-        result = result[0] if result else ""
-    if result_type is not None:
-        return result_type(result)
-    return result
+class XDFStream:
+    """Wraps a single stream dict as returned by pyxdf.load_xdf(), exposing its metadata
+    and sample-timing quality checks as attributes/methods."""
 
+    def __init__(self, stream: dict):
+        self._stream = stream
 
-def get_stream_name(stream: dict) -> str:
-    """Extract a stream's name from its metadata."""
-    return get_stream_metadata(
-        stream=stream,
-        field=INFO_NAME,
-        result_type=str,
-    )
+    def get_metadata(self, field: str, result_type=None):
+        """Extract a field from the stream's info metadata."""
+        result = self._stream.get(STREAM_INFO, {}).get(field, [""])
+        if isinstance(result, list):
+            result = result[0] if result else ""
+        if result_type is not None:
+            return result_type(result)
+        return result
 
+    @property
+    def name(self) -> str:
+        return self.get_metadata(INFO_NAME, str)
 
-def get_stream_type(stream: dict) -> str:
-    """Extract a stream's type from its metadata."""
-    return get_stream_metadata(
-        stream=stream,
-        field=INFO_TYPE,
-        result_type=str,
-    )
+    @property
+    def type(self) -> str:
+        return self.get_metadata(INFO_TYPE, str)
 
+    @property
+    def hostname(self) -> str:
+        return self.get_metadata(INFO_HOSTNAME, str)
 
-def get_nominal_srate(stream: dict) -> float:
-    """Extract a stream's nominal sampling rate from its metadata."""
-    return get_stream_metadata(
-        stream=stream,
-        field=INFO_NOMINAL_SRATE,
-        result_type=float,
-    )
+    @property
+    def nominal_srate(self) -> float:
+        return self.get_metadata(INFO_NOMINAL_SRATE, float)
 
+    @property
+    def is_regular(self) -> bool:
+        """Whether this stream has a fixed nominal sampling rate, as opposed to an
+        irregular/event stream (e.g. markers) sampled asynchronously."""
+        return self.nominal_srate > 0
 
-def get_stream_hostname(stream: dict) -> str:
-    """Extract the hostname of a stream's source recording machine from its metadata."""
-    return get_stream_metadata(
-        stream=stream,
-        field=INFO_HOSTNAME,
-        result_type=str,
-    )
+    @property
+    def time_stamps(self) -> np.ndarray:
+        return np.asarray(self._stream.get(STREAM_TIME_STAMPS, []), dtype=np.float64)
 
+    @property
+    def n_samples(self) -> int:
+        return len(self.time_stamps)
 
-def get_xdf_streams_by_type(
-        stream_type: str,
-        xdf_file: str = None,
-        xdf_data: list = None,
-        exclude_name_substring: str = None,
-        verbose: bool = False,
-        **kwargs
-    ) -> list[dict]:
-    """Fetches all streams matching a specific type from an XDF file (optionally preloaded),
-    optionally excluding streams whose name contains a given substring (e.g. to exclude
-    impedance-check streams which otherwise share the same type as the real data stream)."""
-    if xdf_data is None:
-        assert xdf_file is not None, "xdf_file argument is required if no xdf_data argument is provided"
-        xdf_data, _ = load_xdf(xdf_file, verbose=verbose, **kwargs)
-    matches = []
-    for stream in xdf_data:
-        if get_stream_type(stream).lower() != str(stream_type).lower():
-            continue
-        if exclude_name_substring is not None:
-            if exclude_name_substring.lower() in get_stream_name(stream).lower():
-                continue
-        matches.append(stream)
-    return matches
+    @property
+    def duration(self) -> float:
+        """Time span in seconds from the first to the last sample."""
+        timestamps = self.time_stamps
+        if len(timestamps) < 2:
+            return 0.0
+        return float(timestamps[-1] - timestamps[0])
 
+    def summarize_gaps(self) -> dict:
+        """Summarize sample-timing quality (gaps, effective vs. nominal rate)."""
+        timestamps = self.time_stamps
+        nominal_srate = self.nominal_srate
+        n_samples = len(timestamps)
+        duration = self.duration
 
-def get_stream_duration(stream: dict) -> float:
-    """Extract a stream's time span in seconds from its timestamps."""
-    timestamps = stream.get(STREAM_TIME_STAMPS, [])
-    if len(timestamps) < 2:
-        return 0.0
-    return float(timestamps[-1] - timestamps[0])
+        if n_samples < 2 or nominal_srate <= 0:
+            return {
+                "n_samples": n_samples,
+                "duration": duration,
+                "effective_srate": 0.0,
+                "nominal_srate": nominal_srate,
+                "n_gaps": 0,
+                "total_missing": 0,
+                "max_gap_missing": 0,
+            }
 
+        effective_srate = (n_samples - 1) / duration if duration > 0 else 0.0
+        nominal_period = 1.0 / nominal_srate
 
-def summarize_stream_gaps(stream: dict) -> dict:
-    """Summarize sample-timing quality (gaps, effective vs. nominal rate) for a single
-    regularly-sampled stream. Only meaningful for streams with a nonzero nominal sampling
-    rate; use get_nominal_srate() to check first."""
-    timestamps = np.asarray(stream[STREAM_TIME_STAMPS], dtype=np.float64)
-    nominal_srate = get_nominal_srate(stream)
-    n_samples = len(timestamps)
-    duration = get_stream_duration(stream)
+        intervals = np.diff(timestamps)
+        outlier_mask = intervals > (1.5 * nominal_period)
+        outlier_gaps = intervals[outlier_mask]
+        implied_missing = np.round(outlier_gaps / nominal_period).astype(int) - 1
+        implied_missing = implied_missing[implied_missing > 0]
 
-    if n_samples < 2 or nominal_srate <= 0:
         return {
             "n_samples": n_samples,
             "duration": duration,
-            "effective_srate": 0.0,
+            "effective_srate": effective_srate,
             "nominal_srate": nominal_srate,
-            "n_gaps": 0,
-            "total_missing": 0,
-            "max_gap_missing": 0,
+            "n_gaps": len(implied_missing),
+            "total_missing": int(implied_missing.sum()) if len(implied_missing) else 0,
+            "max_gap_missing": int(implied_missing.max()) if len(implied_missing) else 0,
         }
 
-    effective_srate = (n_samples - 1) / duration if duration > 0 else 0.0
-    nominal_period = 1.0 / nominal_srate
+    def classify_gaps(self, expected_duration: float = None) -> str:
+        """Classify this stream's gap summary into a human-readable verdict, optionally
+        comparing its time span against an expected value (e.g. the max duration across
+        streams in the file, to flag streams that cut off early). Duration is used rather
+        than raw sample count so streams with different sampling rates can be compared directly."""
+        summary = self.summarize_gaps()
+        if summary["n_samples"] < 2:
+            return "NO DATA"
+        if expected_duration is not None and expected_duration > 0 and summary["duration"] < 0.5 * expected_duration:
+            return "CORRUPT / TOO SHORT"
+        # Sustained rate mismatch with no discrete gaps: every interval is a bit off nominal,
+        # rather than a few isolated dropouts -- treat separately from the "ok" case since it
+        # usually indicates a real clock deviation rather than dropped samples.
+        if summary["n_gaps"] == 0:
+            if summary["nominal_srate"] > 0:
+                rate_ratio = summary["effective_srate"] / summary["nominal_srate"]
+                if abs(1 - rate_ratio) > 0.02:
+                    return "SUSTAINED RATE MISMATCH (no discrete gaps, likely real clock deviation)"
+            return "ok"
+        missing_fraction = summary["total_missing"] / summary["n_samples"]
+        if missing_fraction < 0.005:
+            return "ok (negligible gaps)"
+        if summary["n_gaps"] <= 3 and missing_fraction < 0.15:
+            return "salvageable (few concentrated gaps)"
+        return "SEVERE (many/large gaps)"
 
-    intervals = np.diff(timestamps)
-    outlier_mask = intervals > (1.5 * nominal_period)
-    outlier_gaps = intervals[outlier_mask]
-    implied_missing = np.round(outlier_gaps / nominal_period).astype(int) - 1
-    implied_missing = implied_missing[implied_missing > 0]
-
-    return {
-        "n_samples": n_samples,
-        "duration": duration,
-        "effective_srate": effective_srate,
-        "nominal_srate": nominal_srate,
-        "n_gaps": len(implied_missing),
-        "total_missing": int(implied_missing.sum()) if len(implied_missing) else 0,
-        "max_gap_missing": int(implied_missing.max()) if len(implied_missing) else 0,
-    }
+    def __repr__(self):
+        return f"XDFStream(name={self.name!r}, type={self.type!r}, hostname={self.hostname!r})"
 
 
-def classify_stream_gaps(
-        summary: dict,
-        expected_duration: float = None
-    ) -> str:
-    """Classify a stream's gap summary (from summarize_stream_gaps()) into a human-readable
-    verdict, optionally comparing its time span against an expected value 
-    (e.g. the max duration across streams in the file, to flag streams that cut off early).
-    Duration is used rather than raw sample count so streams with different sampling rates
-    can be compared directly."""
-    if summary["n_samples"] < 2:
-        return "NO DATA"
-    if expected_duration is not None and expected_duration > 0 and summary["duration"] < 0.5 * expected_duration:
-        return "CORRUPT / TOO SHORT"
-    # Sustained rate mismatch with no discrete gaps: every interval is a bit off nominal,
-    # rather than a few isolated dropouts -- treat separately from the "ok" case since it
-    # usually indicates a real clock deviation rather than dropped samples.
-    if summary["n_gaps"] == 0:
-        if summary["nominal_srate"] > 0:
-            rate_ratio = summary["effective_srate"] / summary["nominal_srate"]
-            if abs(1 - rate_ratio) > 0.02:
-                return "SUSTAINED RATE MISMATCH (no discrete gaps, likely real clock deviation)"
-        return "ok"
-    missing_fraction = summary["total_missing"] / summary["n_samples"]
-    if missing_fraction < 0.005:
-        return "ok (negligible gaps)"
-    if summary["n_gaps"] <= 3 and missing_fraction < 0.15:
-        return "salvageable (few concentrated gaps)"
-    return "SEVERE (many/large gaps)"
+class XDFFile:
+    """Wraps the streams loaded from a single .xdf file via pyxdf.load_xdf()."""
+
+    def __init__(self, path: str, **load_kwargs):
+        self.path = path
+        raw_streams, self.header = load_xdf(path, **load_kwargs)
+        self.streams = [XDFStream(s) for s in raw_streams]
+
+    def streams_by_type(self, stream_type: str, exclude_name_substring: str = None) -> list[XDFStream]:
+        """Return streams matching a given type, optionally excluding streams whose name
+        contains a given substring (e.g. to exclude impedance-check streams which otherwise
+        share the same type as the real data stream)."""
+        matches = []
+        for stream in self.streams:
+            if stream.type.lower() != str(stream_type).lower():
+                continue
+            if exclude_name_substring is not None and exclude_name_substring.lower() in stream.name.lower():
+                continue
+            matches.append(stream)
+        return matches
+
+    def __repr__(self):
+        return f"XDFFile(path={self.path!r}, n_streams={len(self.streams)})"
