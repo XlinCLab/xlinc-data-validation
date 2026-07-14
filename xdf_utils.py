@@ -6,6 +6,13 @@ from constants import (INFO_HOSTNAME, INFO_NAME, INFO_NOMINAL_SRATE, INFO_TYPE,
 
 FAIL_PREFIXES = ("SEVERE", "CORRUPT", "NO DATA", "FAILED")
 
+# An inter-sample interval must exceed this multiple of the nominal period to count as a
+# discrete gap (dropped sample(s)) rather than normal jitter.
+GAP_OUTLIER_FACTOR = 1.5
+# Sample-to-sample interval std (excluding discrete gaps), as a percentage of the nominal
+# period, above which timing is flagged as jittery even though no gaps were detected.
+JITTER_THRESHOLD_PCT = 15.0
+
 
 class XDFStream:
     """Wraps a single stream dict as returned by pyxdf.load_xdf(), exposing its metadata
@@ -62,7 +69,8 @@ class XDFStream:
         return float(timestamps[-1] - timestamps[0])
 
     def summarize_gaps(self) -> dict:
-        """Summarize sample-timing quality (gaps, effective vs. nominal rate)."""
+        """Summarize sample-timing quality: gap count/size, effective vs. nominal rate, and
+        jitter (sample-to-sample interval variability among non-gap intervals)."""
         timestamps = self.time_stamps
         nominal_srate = self.nominal_srate
         n_samples = len(timestamps)
@@ -77,16 +85,22 @@ class XDFStream:
                 "n_gaps": 0,
                 "total_missing": 0,
                 "max_gap_missing": 0,
+                "jitter_std": 0.0,
+                "jitter_pct": 0.0,
             }
 
         effective_srate = (n_samples - 1) / duration if duration > 0 else 0.0
         nominal_period = 1.0 / nominal_srate
 
-        intervals = np.diff(timestamps)
-        outlier_mask = intervals > (1.5 * nominal_period)
+        intervals = np.abs(np.diff(timestamps))
+        outlier_mask = intervals > (GAP_OUTLIER_FACTOR * nominal_period)
         outlier_gaps = intervals[outlier_mask]
         implied_missing = np.round(outlier_gaps / nominal_period).astype(int) - 1
         implied_missing = implied_missing[implied_missing > 0]
+
+        regular_intervals = intervals[~outlier_mask]
+        jitter_std = float(regular_intervals.std()) if len(regular_intervals) > 0 else 0.0
+        jitter_pct = jitter_std / nominal_period * 100
 
         return {
             "n_samples": n_samples,
@@ -96,7 +110,66 @@ class XDFStream:
             "n_gaps": len(implied_missing),
             "total_missing": int(implied_missing.sum()) if len(implied_missing) else 0,
             "max_gap_missing": int(implied_missing.max()) if len(implied_missing) else 0,
+            "jitter_std": jitter_std,
+            "jitter_pct": jitter_pct,
         }
+
+    def locate_gaps(self) -> list[dict]:
+        """Return the time range and size of each detected gap (dropped-sample interval),
+        in seconds relative to this stream's own start time. Empty for irregular streams
+        or streams without any detected gaps."""
+        timestamps = self.time_stamps
+        nominal_srate = self.nominal_srate
+        if len(timestamps) < 2 or nominal_srate <= 0:
+            return []
+
+        nominal_period = 1.0 / nominal_srate
+        t0 = timestamps[0]
+        intervals = np.abs(np.diff(timestamps))
+        outlier_mask = intervals > (GAP_OUTLIER_FACTOR * nominal_period)
+
+        gaps = []
+        for idx in np.flatnonzero(outlier_mask):
+            n_missing = int(round(intervals[idx] / nominal_period)) - 1
+            if n_missing <= 0:
+                continue
+            gaps.append({
+                "start": float(timestamps[idx] - t0),
+                "end": float(timestamps[idx + 1] - t0),
+                "n_missing": n_missing,
+            })
+        return gaps
+
+    def gap_distribution(self, gap_concentration_threshold: float = 0.7) -> str:
+        """Describe where detected gaps fall within the recording: whether the missing
+        samples are concentrated within one portion of the stream or spread throughout.
+        Distinguishes a stream that's fine except for one bad stretch from one with
+        pervasive dropouts, which have the same gap count/fraction but very different
+        implications for salvageability.
+        
+        gap_concentration_threshold (float): Fraction of a stream's missing samples 
+            that must fall within one third of the recording for its gaps to be 
+            described as "concentrated" rather than "spread throughout".
+        """
+        gaps = self.locate_gaps()
+        duration = self.duration
+        if not gaps or duration <= 0:
+            return "n/a"
+
+        thirds = [0, 0, 0]
+        labels = ("first third", "middle third", "last third")
+        for gap in gaps:
+            midpoint = (gap["start"] + gap["end"]) / 2
+            idx = min(int((midpoint / duration) * 3), 2)
+            thirds[idx] += gap["n_missing"]
+
+        total_missing = sum(thirds)
+        if total_missing == 0:
+            return "n/a"
+        dominant_idx = max(range(3), key=lambda i: thirds[i])
+        if thirds[dominant_idx] / total_missing >= gap_concentration_threshold:
+            return f"concentrated in {labels[dominant_idx]} of recording"
+        return "spread throughout recording"
 
     def classify_gaps(self, expected_duration: float = None) -> str:
         """Classify this stream's gap summary into a human-readable verdict, optionally
@@ -116,13 +189,16 @@ class XDFStream:
                 rate_ratio = summary["effective_srate"] / summary["nominal_srate"]
                 if abs(1 - rate_ratio) > 0.02:
                     return "SUSTAINED RATE MISMATCH (no discrete gaps, likely real clock deviation)"
+            if summary["jitter_pct"] > JITTER_THRESHOLD_PCT:
+                return f"HIGH JITTER (std={summary['jitter_pct']:.1f}% of nominal period, no discrete gaps)"
             return "ok"
         missing_fraction = summary["total_missing"] / summary["n_samples"]
         if missing_fraction < 0.005:
             return "ok (negligible gaps)"
+        location = self.gap_distribution()
         if summary["n_gaps"] <= 3 and missing_fraction < 0.15:
-            return "salvageable (few concentrated gaps)"
-        return "SEVERE (many/large gaps)"
+            return f"salvageable (few concentrated gaps, {location})"
+        return f"SEVERE (many/large gaps, {location})"
 
     def validate(self, expected_duration: float = None) -> dict:
         """Run the sample-timing checks on this stream and return its result row."""
@@ -142,6 +218,9 @@ class XDFStream:
                 "nominal_srate": 0.0,
                 "n_gaps": 0,
                 "total_missing": 0,
+                "jitter_std": 0.0,
+                "jitter_pct": 0.0,
+                "gaps": [],
                 "verdict": verdict,
             }
 
@@ -152,6 +231,7 @@ class XDFStream:
             "type": self.type,
             "hostname": self.hostname,
             "verdict": verdict,
+            "gaps": self.locate_gaps(),
             **summary
         }
 

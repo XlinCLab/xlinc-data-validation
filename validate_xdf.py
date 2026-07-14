@@ -50,7 +50,7 @@ def validate_xdf_file(
 def format_report(results: list[dict]) -> str:
     """Render validation results for one or more files as a human-readable text report."""
     header = (f"{'stream':<24} {'type':<10} {'hostname':<16} {'n_samples':>10} {'dur(s)':>8} "
-              f"{'eff_Hz':>8} {'n_gaps':>7} {'missing':>8}  verdict")
+              f"{'eff_Hz':>8} {'n_gaps':>7} {'missing':>8} {'jitter%':>8}  verdict")
     rule = "-" * len(header)
 
     lines = []
@@ -67,7 +67,7 @@ def format_report(results: list[dict]) -> str:
             lines.append(
                 f"{row['name']:<24.24} {row['type']:<10.10} {row['hostname']:<16.16} "
                 f"{row['n_samples']:>10} {row['duration']:>8.1f} {row['effective_srate']:>8.1f} "
-                f"{row['n_gaps']:>7} {row['total_missing']:>8}  {row['verdict']}"
+                f"{row['n_gaps']:>7} {row['total_missing']:>8} {row['jitter_pct']:>8.2f}  {row['verdict']}"
             )
         status = "PASS" if result["passed"] else "FAIL"
         if result["passed"]:
