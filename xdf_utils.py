@@ -4,7 +4,11 @@ from pyxdf import load_xdf
 STREAM_TIMESTAMPS_LABEL = "time_stamps"
 
 
-def get_stream_metadata(stream: dict, field: str, result_type = None) -> str:
+def get_stream_metadata(
+        stream: dict,
+        field: str,
+        result_type = None,
+    ) -> str:
     """Extract field from XDF stream metadata."""
     result = stream.get("info", {}).get(field, [""])
     if isinstance(result, list):
@@ -57,7 +61,7 @@ def get_xdf_streams_by_type(
         exclude_name_substring: str = None,
         verbose: bool = False,
         **kwargs
-        ) -> list[dict]:
+    ) -> list[dict]:
     """Fetches all streams matching a specific type from an XDF file (optionally preloaded),
     optionally excluding streams whose name contains a given substring (e.g. to exclude
     impedance-check streams which otherwise share the same type as the real data stream)."""
@@ -120,7 +124,10 @@ def summarize_stream_gaps(stream: dict) -> dict:
     }
 
 
-def classify_stream_gaps(summary: dict, expected_n_samples: int = None) -> str:
+def classify_stream_gaps(
+        summary: dict,
+        expected_n_samples: int = None
+    ) -> str:
     """Classify a stream's gap summary (from summarize_stream_gaps()) into a human-readable
     verdict, optionally comparing its sample count against an expected value (e.g. the max
     across streams that should be time-aligned, to flag streams that cut off early)."""

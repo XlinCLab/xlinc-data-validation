@@ -27,7 +27,10 @@ logger = logging.getLogger(__name__)
 FAIL_PREFIXES = ("SEVERE", "CORRUPT", "NO DATA", "FAILED")
 
 
-def validate_stream(stream: dict, expected_n_samples: int) -> dict:
+def validate_stream(
+        stream: dict,
+        expected_n_samples: int
+    ) -> dict:
     """Run the sample-timing checks on a single stream and return its result row."""
     name = get_stream_name(stream)
     stype = get_stream_type(stream)
@@ -61,20 +64,35 @@ def validate_stream(stream: dict, expected_n_samples: int) -> dict:
     }
 
 
-def validate_xdf_file(xdf_file: str, stream_type: str = None, exclude_name_substring: str = None) -> dict:
+def validate_xdf_file(
+        xdf_file: str,
+        stream_type: str = None,
+        exclude_name_substring: str = None,
+    ) -> dict:
     """Load and validate a single XDF file. Returns a result dict describing each stream's
     validation outcome and an overall pass/fail status."""
-    result = {"file": xdf_file, "error": None, "streams": [], "passed": False}
+    result = {
+        "file": xdf_file,
+        "error": None,
+        "streams": [],
+        "passed": False
+    }
 
     try:
-        streams, _header = load_xdf(xdf_file, synchronize_clocks=True, verbose=False)
+        streams, _header = load_xdf(
+            xdf_file,
+            synchronize_clocks=True,
+            verbose=False,
+        )
     except Exception as exc:
         result["error"] = f"Failed to load XDF file: {exc}"
         return result
 
     if stream_type is not None:
         streams = get_xdf_streams_by_type(
-            stream_type, xdf_data=streams, exclude_name_substring=exclude_name_substring
+            stream_type,
+            xdf_data=streams,
+            exclude_name_substring=exclude_name_substring,
         )
 
     if not streams:
