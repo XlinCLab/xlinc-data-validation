@@ -84,6 +84,14 @@ def get_xdf_streams_by_type(
     return matches
 
 
+def get_stream_duration(stream: dict) -> float:
+    """Extract a stream's time span in seconds from its timestamps."""
+    timestamps = stream.get("time_stamps", [])
+    if len(timestamps) < 2:
+        return 0.0
+    return float(timestamps[-1] - timestamps[0])
+
+
 def summarize_stream_gaps(stream: dict) -> dict:
     """Summarize sample-timing quality (gaps, effective vs. nominal rate) for a single
     regularly-sampled stream. Only meaningful for streams with a nonzero nominal sampling
@@ -91,11 +99,12 @@ def summarize_stream_gaps(stream: dict) -> dict:
     timestamps = np.asarray(stream["time_stamps"], dtype=np.float64)
     nominal_srate = get_nominal_srate(stream)
     n_samples = len(timestamps)
+    duration = get_stream_duration(stream)
 
     if n_samples < 2 or nominal_srate <= 0:
         return {
             "n_samples": n_samples,
-            "duration": 0.0,
+            "duration": duration,
             "effective_srate": 0.0,
             "nominal_srate": nominal_srate,
             "n_gaps": 0,
@@ -103,7 +112,6 @@ def summarize_stream_gaps(stream: dict) -> dict:
             "max_gap_missing": 0,
         }
 
-    duration = timestamps[-1] - timestamps[0]
     effective_srate = (n_samples - 1) / duration if duration > 0 else 0.0
     nominal_period = 1.0 / nominal_srate
 
@@ -126,14 +134,16 @@ def summarize_stream_gaps(stream: dict) -> dict:
 
 def classify_stream_gaps(
         summary: dict,
-        expected_n_samples: int = None
+        expected_duration: float = None
     ) -> str:
     """Classify a stream's gap summary (from summarize_stream_gaps()) into a human-readable
-    verdict, optionally comparing its sample count against an expected value (e.g. the max
-    across streams that should be time-aligned, to flag streams that cut off early)."""
+    verdict, optionally comparing its time span against an expected value 
+    (e.g. the max duration across streams in the file, to flag streams that cut off early).
+    Duration is used rather than raw sample count so streams with different sampling rates
+    can be compared directly."""
     if summary["n_samples"] < 2:
         return "NO DATA"
-    if expected_n_samples is not None and summary["n_samples"] < 0.5 * expected_n_samples:
+    if expected_duration is not None and expected_duration > 0 and summary["duration"] < 0.5 * expected_duration:
         return "CORRUPT / TOO SHORT"
     # Sustained rate mismatch with no discrete gaps: every interval is a bit off nominal,
     # rather than a few isolated dropouts -- treat separately from the "ok" case since it
