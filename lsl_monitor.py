@@ -12,11 +12,22 @@ Usage:
 
 import argparse
 import logging
+import os
 import time
+from datetime import datetime
 
 import pylsl
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_LOG_DIR = "logs"
+
+
+def default_logfile() -> str:
+    """Build a timestamped path under logs directory."""
+    os.makedirs(DEFAULT_LOG_DIR, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return os.path.join(DEFAULT_LOG_DIR, f"lsl_watchdog_{timestamp}.log")
 
 
 def configure_logging(logfile: str) -> None:
@@ -37,7 +48,7 @@ def configure_logging(logfile: str) -> None:
 
 
 def monitor(
-        logfile: str = "lsl_watchdog.log",
+        logfile: str = None,
         interval: float = 1.0,
         wait_time: float = 2.0,
         max_buflen: int = 360,
@@ -45,8 +56,11 @@ def monitor(
         time_correction_timeout: float = 0.5,
     ) -> None:
     """Attach to all currently-resolvable LSL streams and log per-stream timing stats
-    to `logfile` every `interval` seconds until interrupted."""
+    to `logfile` every `interval` seconds until interrupted. If `logfile` is not given,
+    defaults to a timestamped file under logs/."""
+    logfile = logfile or default_logfile()
     configure_logging(logfile)
+    logger.info(f"Logging to {logfile}")
 
     streams = pylsl.resolve_streams(wait_time=wait_time)
     inlets = {}
@@ -81,8 +95,9 @@ def main():
         description="Monitor live LSL streams while recording and log per-stream timing "
                      "stats (sample counts, pull lag, clock offset) until interrupted."
     )
-    parser.add_argument("-o", "--logfile", default="lsl_watchdog.log",
-                         help="Path to write the monitoring log to. Default: lsl_watchdog.log")
+    parser.add_argument("-o", "--logfile", default=None,
+                         help="Path to write the monitoring log to. "
+                              "Default: logs/lsl_watchdog_<timestamp>.log")
     parser.add_argument("--interval", type=float, default=1.0,
                          help="Seconds between log ticks. Default: 1.0")
     parser.add_argument("--wait-time", type=float, default=2.0,
