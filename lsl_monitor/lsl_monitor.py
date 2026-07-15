@@ -6,8 +6,8 @@ logs each stream's sample count, pull lag, and clock offset to a logfile. Runs u
 interrupted (Ctrl+C).
 
 Usage:
-    python lsl_monitor.py
-    python lsl_monitor.py --logfile session1_watchdog.log --interval 0.5
+    python3 -m lsl_monitor.lsl_monitor
+    python3 -m lsl_monitor.lsl_monitor --logfile session1_watchdog.log --interval 0.5
 """
 
 import argparse
