@@ -11,9 +11,29 @@ Usage:
 """
 
 import argparse
+import logging
 import time
 
 import pylsl
+
+logger = logging.getLogger(__name__)
+
+
+def configure_logging(logfile: str) -> None:
+    """Attach a file handler (all levels) and a console handler (INFO+) to the module
+    logger, so per-tick detail goes to `logfile` while notable events also print live."""
+    logger.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s %(name)s %(levelname)s: %(message)s')
+
+    file_handler = logging.FileHandler(logfile, mode="w")
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
 
 
 def monitor(
@@ -26,33 +46,34 @@ def monitor(
     ) -> None:
     """Attach to all currently-resolvable LSL streams and log per-stream timing stats
     to `logfile` every `interval` seconds until interrupted."""
+    configure_logging(logfile)
+
     streams = pylsl.resolve_streams(wait_time=wait_time)
     inlets = {}
     for s in streams:
         inlets[s.name()] = pylsl.StreamInlet(s, max_buflen=max_buflen, recover=recover)
-        print(f"attached: {s.name()} ({s.channel_count()} ch @ {s.nominal_srate()} Hz)")
+        logger.info(f"attached: {s.name()} ({s.channel_count()} ch @ {s.nominal_srate()} Hz)")
 
     counts = {n: 0 for n in inlets}
-    with open(logfile, "w", buffering=1) as f:
-        try:
-            while True:
-                t = pylsl.local_clock()
-                for name, inlet in inlets.items():
-                    chunk, stamps = inlet.pull_chunk(timeout=0.0)
-                    counts[name] += len(stamps)
-                    try:
-                        off = inlet.time_correction(timeout=time_correction_timeout)
-                    except Exception as e:
-                        off = float("nan")
-                        f.write(f"{t:.3f} {name} TIME_CORRECTION_FAIL {e}\n")
+    try:
+        while True:
+            t = pylsl.local_clock()
+            for name, inlet in inlets.items():
+                chunk, stamps = inlet.pull_chunk(timeout=0.0)
+                counts[name] += len(stamps)
+                try:
+                    off = inlet.time_correction(timeout=time_correction_timeout)
+                except Exception as e:
+                    off = float("nan")
+                    logger.warning(f"{name} TIME_CORRECTION_FAIL {e}")
 
-                    last = stamps[-1] if stamps else float("nan")
-                    f.write(f"{t:.3f} {name} n={len(stamps):5d} total={counts[name]:8d} "
-                            f"lag={t - last:+.3f} off={off:+.4f}\n")
+                last = stamps[-1] if stamps else float("nan")
+                logger.debug(f"{name} n={len(stamps):5d} total={counts[name]:8d} "
+                             f"lag={t - last:+.3f} off={off:+.4f}")
 
-                time.sleep(interval)
-        except KeyboardInterrupt:
-            print("\nStopped.")
+            time.sleep(interval)
+    except KeyboardInterrupt:
+        logger.info("Stopped.")
 
 
 def main():
