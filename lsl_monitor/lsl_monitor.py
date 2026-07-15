@@ -57,6 +57,7 @@ def log_summary(
         time_correction_fail_counts: dict,
         high_lag_counts: dict,
         startup_issue_counts: dict,
+        lost_at: dict,
     ) -> None:
     """Log a per-stream end-of-session summary, flagging any stream that had issues.
     Issues suppressed as expected startup noise (see `startup_grace_period` in monitor())
@@ -76,6 +77,8 @@ def log_summary(
             issues.append(f"{time_correction_fail_counts[uid]} time-correction failure(s)")
         if high_lag_counts[uid]:
             issues.append(f"{high_lag_counts[uid]} high-lag tick(s)")
+        if lost_at[uid] is not None:
+            issues.append(f"stream lost after {lost_at[uid] - session_start:.1f}s")
 
         stats = f"{total} samples over {duration:.1f}s (~{effective_srate:.1f} Hz"
         stats += f", nominal {nominal_srate:.1f} Hz)" if nominal_srate > 0 else ")"
@@ -112,8 +115,11 @@ def monitor(
     `startup_grace_period` seconds of that stream being attached, are expected artifacts of
     LSL's initial clock-sync and of catching up on backlog buffered during
     resolve_streams()/attach -- these are logged at a lower level and excluded from the
-    WARNING-worthy issue counts, so only genuine mid-session problems get flagged. A
-    per-stream summary is logged on exit."""
+    WARNING-worthy issue counts, so only genuine mid-session problems get flagged.
+
+    If a stream disconnects outright (e.g. the source crashes or its outlet closes), pulling
+    from it is logged as an error and that stream is stopped monitoring for the rest of the
+    session, rather than crashing the whole process. A per-stream summary is logged on exit."""
     logfile = logfile or default_logfile()
     configure_logging(logfile)
     logger.info(f"Logging to {logfile}")
@@ -147,15 +153,26 @@ def monitor(
     time_correction_fail_counts = {uid: 0 for uid in inlets}
     high_lag_counts = {uid: 0 for uid in inlets}
     startup_issue_counts = {uid: 0 for uid in inlets}
+    lost_at = {uid: None for uid in inlets}
     session_start = pylsl.local_clock()
     try:
         while True:
             t = pylsl.local_clock()
             for uid, inlet in inlets.items():
+                if lost_at[uid] is not None:
+                    continue
+
                 label = labels[uid]
                 nominal_srate = nominal_srates[uid]
                 in_startup_grace = (t - attach_times[uid]) < startup_grace_period
-                chunk, stamps = inlet.pull_chunk(timeout=0.0)
+
+                try:
+                    chunk, stamps = inlet.pull_chunk(timeout=0.0)
+                except Exception as e:
+                    lost_at[uid] = t
+                    logger.error(f"{label} STREAM_LOST {e} -- no longer monitoring this stream")
+                    continue
+
                 counts[uid] += len(stamps)
                 if stamps:
                     last_seen[uid] = stamps[-1]
@@ -200,6 +217,7 @@ def monitor(
             time_correction_fail_counts=time_correction_fail_counts,
             high_lag_counts=high_lag_counts,
             startup_issue_counts=startup_issue_counts,
+            lost_at=lost_at,
         )
 
 
