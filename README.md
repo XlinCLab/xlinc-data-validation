@@ -1,13 +1,18 @@
 # xlinc-data-validation
 
-Tools for validating data collected in a laboratory setting via LabStreamingLayer (LSL) and
-recorded to `.xdf` files.
+Tools for working with laboratory data collected via LabStreamingLayer (LSL):
+* Live monitoring of LSL streams while recording to flag potential streaming issues.
+* Validation of recorded `.xdf` files to check for potential data collection issues post-recording.
 
 ## Table of Contents
 * [Setup](#setup)
-* [XDF Validation](#xdf-validation)
-  * [Validation App](#running-the-desktop-app)
-  * [Running manually](#running-the-script-manually)
+* [XDF Validator](#xdf-validator)
+  * [Desktop app](#running-the-xdf-validator-desktop-app)
+  * [Running manually](#running-the-xdf-validator-script-manually)
+* [LSL Monitor](#lsl-monitor)
+  * [Desktop app](#running-the-lsl-monitor-desktop-app)
+  * [Running manually](#running-the-lsl-monitor-script-manually)
+  * [Mock testing](#mock-testing)
 
 ## Setup
 
@@ -29,12 +34,12 @@ pip install -r requirements.txt
 ```
 
 Activate the virtual environment (`source .venv/bin/activate`) in any new terminal session
-before running either tool below.
+before running any of the tools below.
 
 
-## XDF Validation
+## XDF Validator
 
-XDF streams are validated by checking for potential data issues.  For each stream in an `.xdf` file:
+XDF streams are validated by checking for potential data issues. For each stream in an `.xdf` file:
 
 - **Gaps** — inter-sample intervals much larger than the stream's nominal period are
   treated as dropped sample(s); the total/largest gap size and how many samples are
@@ -55,7 +60,7 @@ XDF streams are validated by checking for potential data issues.  For each strea
 Irregularly-sampled streams (e.g. marker/event streams with no fixed rate) are exempted
 from the gap/rate/jitter checks but are still checked for truncation.
 
-### Running the desktop app
+### Running the XDF validator desktop app
 
 ```bash
 python xdf_validator_app.py
@@ -68,11 +73,11 @@ python xdf_validator_app.py
 3. Click **Validate**. Results stream in per file as they complete.
 4. **Save Report...** writes a plain-text report to a specified output file.
 
-### Running the script manually
+### Running the XDF validator script manually
 
 ```bash
-python validate_xdf.py recording1.xdf recording2.xdf
-python validate_xdf.py recording.xdf --stream-type EEG --exclude-name-substring Impedance -o report.txt
+python3 -m xdf_validator.validate_xdf recording1.xdf recording2.xdf
+python3 -m xdf_validator.validate_xdf recording.xdf --stream-type EEG --exclude-name-substring Impedance -o report.txt
 ```
 
 ```
@@ -96,3 +101,93 @@ The report prints to stdout and, if `-o/--output` is given, is also written to t
 The process exits `0` if every file passed validation and `1` otherwise (including load
 failures), so it can be used as a pass/fail gate in a script.
 
+
+## LSL Monitor
+
+Unlike the XDF validator, which checks a recording after the fact, the LSL monitor runs
+*during* a recording: it discovers whatever LSL streams are on the network, and once per
+interval logs each stream's sample count, pull lag, and clock offset. It is meant to run
+alongside your recording software so problems can be caught while
+the session is still in progress rather than discovered afterward.
+
+- **Lag warnings** — for regularly-sampled streams, a tick whose lag (time since the last
+  received sample) exceeds a configurable number of nominal sample periods is logged as a
+  warning, since it suggests a stall or dropout. Irregularly-sampled streams (e.g. markers)
+  are exempt, since gaps between events are expected.
+- **Startup grace period** — a stream's first clock-sync call, and any high lag shortly
+  after it's attached, are expected artifacts of LSL's handshake and of catching up on
+  buffered backlog. These are logged separately and don't count as real issues, so only
+  genuine mid-session problems get flagged as warnings.
+- **Stream loss** — if a stream disconnects outright, this is logged as an error and the
+  stream stops being monitored for the rest of the session, without crashing monitoring of
+  the other streams.
+- **Session summary** — on exit (including `Ctrl+C`), a per-stream summary is logged: total
+  samples, effective vs. nominal rate, and any issues encountered.
+
+All of this is logged to a timestamped file under the `logs/` directory by default.
+
+### Running the LSL monitor desktop app
+
+```bash
+python lsl_monitor_app.py
+```
+
+Configure the log file (leave blank for the default timestamped path) and any of the
+options below, then **Start**/**Stop** monitoring. Log output is shown live in the console pane, color-coded by severity.
+
+### Running the LSL monitor script manually
+
+```bash
+python3 -m lsl_monitor.lsl_monitor
+python3 -m lsl_monitor.lsl_monitor --logfile session1_watchdog.log --interval 0.5
+```
+
+```
+usage: lsl_monitor.py [-h] [-o LOGFILE] [--interval INTERVAL]
+                      [--wait-time WAIT_TIME] [--max-buflen MAX_BUFLEN]
+                      [--recover]
+                      [--time-correction-timeout TIME_CORRECTION_TIMEOUT]
+                      [--lag-threshold-periods LAG_THRESHOLD_PERIODS]
+                      [--startup-grace-period STARTUP_GRACE_PERIOD]
+
+options:
+  -o LOGFILE, --logfile LOGFILE
+                        Path to write the monitoring log to. Default:
+                        logs/lsl_watchdog_<timestamp>.log
+  --interval INTERVAL   Seconds between log ticks. Default: 1.0
+  --wait-time WAIT_TIME
+                        Seconds to wait when resolving streams at startup. Default: 2.0
+  --max-buflen MAX_BUFLEN
+                        Max buffer length (seconds) for each stream inlet. Default: 360
+  --recover             Attempt to recover an inlet if its stream is lost. Default: off
+  --time-correction-timeout TIME_CORRECTION_TIMEOUT
+                        Timeout (seconds) for each stream's time_correction() call. Default: 0.5
+  --lag-threshold-periods LAG_THRESHOLD_PERIODS
+                        Flag a regularly-sampled stream's tick as a warning when its lag
+                        exceeds this many nominal sample periods (irregularly-sampled
+                        streams, e.g. markers, are exempt). Default: 10
+  --startup-grace-period STARTUP_GRACE_PERIOD
+                        Seconds after each stream is attached during which time-correction
+                        failures and high lag are treated as expected startup noise rather
+                        than warnings. Default: 5.0
+```
+
+Runs until interrupted (`Ctrl+C`), logging a session summary on exit.
+
+### Mock testing
+
+`lsl_monitor/mock_lsl_stream.py` emits fake LSL streams over loopback, so the monitor can
+be tested without any real streaming devices attached:
+
+```bash
+# plain, well-behaved stream
+python3 -m lsl_monitor.mock_lsl_stream
+
+# inject dropouts and jitter to see the monitor react to bad data
+python3 -m lsl_monitor.mock_lsl_stream --srate 500 --n-channels 16 --dropout-prob 0.01 --jitter 0.01
+```
+
+By default it streams a regularly-sampled `MockEEG` stream alongside an irregularly-sampled
+`MockMarkers` stream (pass `--no-markers` to omit the latter). `--dropout-prob`/`--gap-size`
+simulate dropped-sample gaps; `--jitter` adds random timing noise to each sample. Run this
+in one terminal and the monitor (script or desktop app) in another to see it work end to end.
