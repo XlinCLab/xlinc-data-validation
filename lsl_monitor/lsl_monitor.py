@@ -12,6 +12,7 @@ Usage:
 
 import argparse
 import logging
+import math
 import os
 import time
 from datetime import datetime
@@ -47,6 +48,41 @@ def configure_logging(logfile: str) -> None:
     logger.addHandler(console_handler)
 
 
+def log_summary(
+        labels: dict,
+        nominal_srates: dict,
+        counts: dict,
+        session_start: float,
+        session_end: float,
+        time_correction_fail_counts: dict,
+        high_lag_counts: dict,
+    ) -> None:
+    """Log a per-stream end-of-session summary, flagging any stream that had issues."""
+    duration = session_end - session_start
+    logger.info("=== Session summary ===")
+    logger.info(f"Monitored {len(labels)} stream(s) for {duration:.1f}s")
+    for uid, label in labels.items():
+        total = counts[uid]
+        effective_srate = total / duration if duration > 0 else 0.0
+        nominal_srate = nominal_srates[uid]
+
+        issues = []
+        if total == 0:
+            issues.append("no samples ever received")
+        if time_correction_fail_counts[uid]:
+            issues.append(f"{time_correction_fail_counts[uid]} time-correction failure(s)")
+        if high_lag_counts[uid]:
+            issues.append(f"{high_lag_counts[uid]} high-lag tick(s)")
+
+        stats = f"{total} samples over {duration:.1f}s (~{effective_srate:.1f} Hz"
+        stats += f", nominal {nominal_srate:.1f} Hz)" if nominal_srate > 0 else ")"
+
+        if issues:
+            logger.warning(f"{label}: {stats} -- ISSUES: {'; '.join(issues)}")
+        else:
+            logger.info(f"{label}: {stats} -- OK")
+
+
 def monitor(
         logfile: str = None,
         interval: float = 1.0,
@@ -54,10 +90,17 @@ def monitor(
         max_buflen: int = 360,
         recover: bool = False,
         time_correction_timeout: float = 0.5,
+        lag_threshold_periods: float = 10.0,
     ) -> None:
     """Attach to all currently-resolvable LSL streams and log per-stream timing stats
     to `logfile` every `interval` seconds until interrupted. If `logfile` is not given,
-    defaults to a timestamped file under logs/."""
+    defaults to a timestamped file under logs/.
+
+    For regularly-sampled streams, a tick whose lag (time since the last received sample)
+    exceeds `lag_threshold_periods` times the stream's nominal sample period is logged as
+    a warning instead of routine debug detail, since it suggests a stall or dropout.
+    Irregularly-sampled streams (nominal rate 0, e.g. markers) are exempt from this check,
+    since gaps between events are expected. A per-stream summary is logged on exit."""
     logfile = logfile or default_logfile()
     configure_logging(logfile)
     logger.info(f"Logging to {logfile}")
@@ -73,9 +116,11 @@ def monitor(
 
     inlets = {}
     labels = {}
+    nominal_srates = {}
     for s in streams:
         uid = s.uid()
         inlets[uid] = pylsl.StreamInlet(s, max_buflen=max_buflen, recover=recover)
+        nominal_srates[uid] = s.nominal_srate()
         label = f"{s.name()} ({s.hostname()})"
         if name_hostname_counts[(s.name(), s.hostname())] > 1:
             label += f" [{uid[:8]}]"
@@ -83,26 +128,53 @@ def monitor(
         logger.info(f"attached: {labels[uid]} ({s.channel_count()} ch @ {s.nominal_srate()} Hz)")
 
     counts = {uid: 0 for uid in inlets}
+    last_seen = {uid: None for uid in inlets}
+    time_correction_fail_counts = {uid: 0 for uid in inlets}
+    high_lag_counts = {uid: 0 for uid in inlets}
+    session_start = pylsl.local_clock()
     try:
         while True:
             t = pylsl.local_clock()
             for uid, inlet in inlets.items():
                 label = labels[uid]
+                nominal_srate = nominal_srates[uid]
                 chunk, stamps = inlet.pull_chunk(timeout=0.0)
                 counts[uid] += len(stamps)
+                if stamps:
+                    last_seen[uid] = stamps[-1]
+
                 try:
                     off = inlet.time_correction(timeout=time_correction_timeout)
                 except Exception as e:
                     off = float("nan")
+                    time_correction_fail_counts[uid] += 1
                     logger.warning(f"{label} TIME_CORRECTION_FAIL {e}")
 
-                last = stamps[-1] if stamps else float("nan")
-                logger.debug(f"{label} n={len(stamps):5d} total={counts[uid]:8d} "
-                             f"lag={t - last:+.3f} off={off:+.4f}")
+                lag = t - last_seen[uid] if last_seen[uid] is not None else float("nan")
+                message = (f"{label} n={len(stamps):5d} total={counts[uid]:8d} "
+                           f"lag={lag:+.3f} off={off:+.4f}")
+
+                lag_threshold = lag_threshold_periods / nominal_srate if nominal_srate > 0 else None
+                if lag_threshold is not None and not math.isnan(lag) and lag > lag_threshold:
+                    high_lag_counts[uid] += 1
+                    logger.warning(f"{message} -- lag exceeds {lag_threshold_periods:.0f} nominal "
+                                    f"sample periods ({lag_threshold:.3f}s); possible stall/dropout")
+                else:
+                    logger.debug(message)
 
             time.sleep(interval)
     except KeyboardInterrupt:
         logger.info("Stopped.")
+    finally:
+        log_summary(
+            labels=labels,
+            nominal_srates=nominal_srates,
+            counts=counts,
+            session_start=session_start,
+            session_end=pylsl.local_clock(),
+            time_correction_fail_counts=time_correction_fail_counts,
+            high_lag_counts=high_lag_counts,
+        )
 
 
 def main():
@@ -123,6 +195,10 @@ def main():
                          help="Attempt to recover an inlet if its stream is lost. Default: off")
     parser.add_argument("--time-correction-timeout", type=float, default=0.5,
                          help="Timeout (seconds) for each stream's time_correction() call. Default: 0.5")
+    parser.add_argument("--lag-threshold-periods", type=float, default=10.0,
+                         help="Flag a regularly-sampled stream's tick as a warning when its lag exceeds "
+                              "this many nominal sample periods (irregularly-sampled streams, e.g. "
+                              "markers, are exempt). Default: 10")
     args = parser.parse_args()
 
     monitor(
@@ -132,6 +208,7 @@ def main():
         max_buflen=args.max_buflen,
         recover=args.recover,
         time_correction_timeout=args.time_correction_timeout,
+        lag_threshold_periods=args.lag_threshold_periods,
     )
 
 
