@@ -63,26 +63,41 @@ def monitor(
     logger.info(f"Logging to {logfile}")
 
     streams = pylsl.resolve_streams(wait_time=wait_time)
-    inlets = {}
-    for s in streams:
-        inlets[s.name()] = pylsl.StreamInlet(s, max_buflen=max_buflen, recover=recover)
-        logger.info(f"attached: {s.name()} ({s.channel_count()} ch @ {s.nominal_srate()} Hz)")
 
-    counts = {n: 0 for n in inlets}
+    # Count (name, hostname) occurrences so we only append a disambiguating uid suffix
+    # to labels where name + hostname alone wouldn't be unique.
+    name_hostname_counts = {}
+    for s in streams:
+        key = (s.name(), s.hostname())
+        name_hostname_counts[key] = name_hostname_counts.get(key, 0) + 1
+
+    inlets = {}
+    labels = {}
+    for s in streams:
+        uid = s.uid()
+        inlets[uid] = pylsl.StreamInlet(s, max_buflen=max_buflen, recover=recover)
+        label = f"{s.name()} ({s.hostname()})"
+        if name_hostname_counts[(s.name(), s.hostname())] > 1:
+            label += f" [{uid[:8]}]"
+        labels[uid] = label
+        logger.info(f"attached: {labels[uid]} ({s.channel_count()} ch @ {s.nominal_srate()} Hz)")
+
+    counts = {uid: 0 for uid in inlets}
     try:
         while True:
             t = pylsl.local_clock()
-            for name, inlet in inlets.items():
+            for uid, inlet in inlets.items():
+                label = labels[uid]
                 chunk, stamps = inlet.pull_chunk(timeout=0.0)
-                counts[name] += len(stamps)
+                counts[uid] += len(stamps)
                 try:
                     off = inlet.time_correction(timeout=time_correction_timeout)
                 except Exception as e:
                     off = float("nan")
-                    logger.warning(f"{name} TIME_CORRECTION_FAIL {e}")
+                    logger.warning(f"{label} TIME_CORRECTION_FAIL {e}")
 
                 last = stamps[-1] if stamps else float("nan")
-                logger.debug(f"{name} n={len(stamps):5d} total={counts[name]:8d} "
+                logger.debug(f"{label} n={len(stamps):5d} total={counts[uid]:8d} "
                              f"lag={t - last:+.3f} off={off:+.4f}")
 
             time.sleep(interval)
