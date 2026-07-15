@@ -1,5 +1,7 @@
 """GUI-specific constants (window sizing, labels, colors), kept separate from the XDF
-field-label constants in the project-level constants.py."""
+field-label constants in xdf_validator/constants.py."""
+
+from shared.colors import COLOR_FAIL, COLOR_OK, COLOR_WARN
 
 WINDOW_TITLE = "XDF Validator"
 WINDOW_WIDTH = 1100
@@ -23,9 +25,9 @@ RESULT_COLUMNS = [
     "Verdict",
 ]
 
-VERDICT_COLOR_FAIL = "#c0392b"
-VERDICT_COLOR_WARN = "#b8860b"
-VERDICT_COLOR_OK = "#1e7e34"
+VERDICT_COLOR_FAIL = COLOR_FAIL
+VERDICT_COLOR_WARN = COLOR_WARN
+VERDICT_COLOR_OK = COLOR_OK
 
 # Verdict substrings shown in the "warn" color even though the overall file still passes
 # (see xdf_utils.FAIL_PREFIXES for the actual pass/fail cutoff).

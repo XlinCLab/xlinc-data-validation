@@ -9,13 +9,15 @@ from PyQt6.QtWidgets import (QFileDialog, QHBoxLayout, QLabel, QLineEdit,
                              QPushButton, QSplitter, QStatusBar, QTreeWidget,
                              QTreeWidgetItem, QVBoxLayout, QWidget)
 
-from gui.constants import (DEFAULT_REPORT_FILENAME, RESULT_COLUMNS,
-                           VERDICT_COLOR_FAIL, VERDICT_COLOR_OK,
-                           VERDICT_COLOR_WARN, WARN_SUBSTRINGS, WINDOW_HEIGHT,
-                           WINDOW_TITLE, WINDOW_WIDTH, XDF_FILE_FILTER)
-from gui.worker import ValidationWorker
-from validate_xdf import format_report
-from xdf_utils import FAIL_PREFIXES
+from xdf_validator.gui.constants import (DEFAULT_REPORT_FILENAME,
+                                         RESULT_COLUMNS, VERDICT_COLOR_FAIL,
+                                         VERDICT_COLOR_OK, VERDICT_COLOR_WARN,
+                                         WARN_SUBSTRINGS, WINDOW_HEIGHT,
+                                         WINDOW_TITLE, WINDOW_WIDTH,
+                                         XDF_FILE_FILTER)
+from xdf_validator.gui.worker import ValidationWorker
+from xdf_validator.validate_xdf import format_report
+from xdf_validator.xdf_utils import FAIL_PREFIXES
 
 VERDICT_COLUMN = len(RESULT_COLUMNS) - 1
 

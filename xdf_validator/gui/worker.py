@@ -2,7 +2,7 @@
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from validate_xdf import validate_xdf_file
+from xdf_validator.validate_xdf import validate_xdf_file
 
 
 class ValidationWorker(QThread):

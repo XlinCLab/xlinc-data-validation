@@ -5,8 +5,8 @@ For each file, loads all (or a filtered subset of) streams and checks each regul
 stream's timing for gaps, dropped samples, and effective-vs-nominal sampling rate deviations.
 
 Usage:
-    python validate_xdf.py recording1.xdf recording2.xdf
-    python validate_xdf.py recording.xdf --stream-type EEG --output report.txt
+    python3 -m xdf_validator.validate_xdf recording1.xdf recording2.xdf
+    python3 -m xdf_validator.validate_xdf recording.xdf --stream-type EEG --output report.txt
 """
 
 import argparse
@@ -14,7 +14,7 @@ import logging
 import os
 import sys
 
-from xdf_utils import XDFFile
+from xdf_validator.xdf_utils import XDFFile
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(name)s %(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)

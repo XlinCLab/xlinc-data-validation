@@ -1,8 +1,9 @@
 import numpy as np
 from pyxdf import load_xdf
 
-from constants import (INFO_HOSTNAME, INFO_NAME, INFO_NOMINAL_SRATE, INFO_TYPE,
-                       STREAM_INFO, STREAM_TIME_STAMPS)
+from xdf_validator.constants import (INFO_HOSTNAME, INFO_NAME,
+                                     INFO_NOMINAL_SRATE, INFO_TYPE,
+                                     STREAM_INFO, STREAM_TIME_STAMPS)
 
 FAIL_PREFIXES = ("SEVERE", "CORRUPT", "NO DATA", "FAILED")
 
