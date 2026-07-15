@@ -14,7 +14,7 @@ import argparse
 import logging
 import math
 import os
-import time
+import threading
 from datetime import datetime
 
 import pylsl
@@ -22,6 +22,12 @@ import pylsl
 logger = logging.getLogger(__name__)
 
 DEFAULT_LOG_DIR = "logs"
+
+# Names tagged onto the handlers configure_logging() manages, so repeated calls (e.g. each
+# time a GUI "Start" button re-runs monitor()) replace only those handlers and leave any
+# externally-attached handler (e.g. a GUI console handler) untouched.
+FILE_HANDLER_NAME = "lsl_monitor_file_handler"
+CONSOLE_HANDLER_NAME = "lsl_monitor_console_handler"
 
 
 def default_logfile() -> str:
@@ -35,14 +41,20 @@ def configure_logging(logfile: str) -> None:
     """Attach a file handler (all levels) and a console handler (INFO+) to the module
     logger, so per-tick detail goes to `logfile` while notable events also print live."""
     logger.setLevel(logging.DEBUG)
+    for h in list(logger.handlers):
+        if h.name in (FILE_HANDLER_NAME, CONSOLE_HANDLER_NAME):
+            logger.removeHandler(h)
+
     formatter = logging.Formatter('%(asctime)s %(name)s %(levelname)s: %(message)s')
 
     file_handler = logging.FileHandler(logfile, mode="w")
+    file_handler.name = FILE_HANDLER_NAME
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
 
     console_handler = logging.StreamHandler()
+    console_handler.name = CONSOLE_HANDLER_NAME
     console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
@@ -100,9 +112,12 @@ def monitor(
         time_correction_timeout: float = 0.5,
         lag_threshold_periods: float = 10.0,
         startup_grace_period: float = 5.0,
+        stop_event: threading.Event = None,
     ) -> None:
     """Attach to all currently-resolvable LSL streams and log per-stream timing stats
-    to `logfile` every `interval` seconds until interrupted. If `logfile` is not given,
+    to `logfile` every `interval` seconds until interrupted (Ctrl+C) or, if a `stop_event`
+    is supplied, until it's set -- letting callers like a GUI stop monitoring cleanly from
+    another thread instead of relying on KeyboardInterrupt. If `logfile` is not given,
     defaults to a timestamped file under logs/.
 
     For regularly-sampled streams, a tick whose lag (time since the last received sample)
@@ -123,6 +138,7 @@ def monitor(
     logfile = logfile or default_logfile()
     configure_logging(logfile)
     logger.info(f"Logging to {logfile}")
+    stop_event = stop_event or threading.Event()
 
     streams = pylsl.resolve_streams(wait_time=wait_time)
 
@@ -156,7 +172,7 @@ def monitor(
     lost_at = {uid: None for uid in inlets}
     session_start = pylsl.local_clock()
     try:
-        while True:
+        while not stop_event.is_set():
             t = pylsl.local_clock()
             for uid, inlet in inlets.items():
                 if lost_at[uid] is not None:
@@ -204,7 +220,7 @@ def monitor(
                 else:
                     logger.debug(message)
 
-            time.sleep(interval)
+            stop_event.wait(interval)
     except KeyboardInterrupt:
         logger.info("Stopped.")
     finally:
