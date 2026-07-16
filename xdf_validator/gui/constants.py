@@ -7,6 +7,10 @@ WINDOW_TITLE = "XDF Validator"
 WINDOW_WIDTH = 1100
 WINDOW_HEIGHT = 650
 
+PLOT_WINDOW_TITLE = "Plot XDF Streams"
+PLOT_WINDOW_WIDTH = 1100
+PLOT_WINDOW_HEIGHT = 700
+
 XDF_FILE_FILTER = "XDF files (*.xdf);;All files (*)"
 
 # QTreeWidget column order/labels for the per-stream validation results. The verdict is

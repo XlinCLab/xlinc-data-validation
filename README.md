@@ -9,6 +9,7 @@ Tools for working with laboratory data collected via LabStreamingLayer (LSL):
 * [XDF Validator](#xdf-validator)
   * [Desktop app](#running-the-xdf-validator-desktop-app)
   * [Running manually](#running-the-xdf-validator-script-manually)
+  * [Plotting streams](#plotting-xdf-streams)
 * [LSL Monitor](#lsl-monitor)
   * [Desktop app](#running-the-lsl-monitor-desktop-app)
   * [Running manually](#running-the-lsl-monitor-script-manually)
@@ -72,6 +73,9 @@ python xdf_validator_app.py
    regardless of type) — leave both blank to check every stream in each file.
 3. Click **Validate**. Results stream in per file as they complete.
 4. **Save Report...** writes a plain-text report to a specified output file.
+5. **Plot Streams...** opens a separate window (seeded with the files already added
+   above, or **Browse...** for another one) to visually inspect a file's streams.
+   See [Plotting XDF streams](#plotting-xdf-streams) below for further details.
 
 ### Running the XDF validator script manually
 
@@ -100,6 +104,44 @@ options:
 The report prints to stdout and, if `-o/--output` is given, is also written to that file.
 The process exits `0` if every file passed validation and `1` otherwise (including load
 failures), so it can be used as a pass/fail gate in a script.
+
+### Plotting XDF streams
+
+All streams in a file are plotted on one synchronized time axis (streams within a file
+are already on a common clock, so gaps/misalignments between them stay visible) but each
+keeps its own independent, labeled Y-axis. Multi-channel streams (e.g. a 128-channel EEG
+montage) are drawn as stacked, vertically-offset traces so a dropout affecting only some
+channels stays visible; irregularly-sampled streams (e.g. markers) are drawn as event
+ticks rather than a continuous waveform. Any gaps detected by the validation checks above
+are shaded directly on the plot.
+
+```bash
+python3 -m xdf_validator.plot_xdf_streams recording.xdf
+python3 -m xdf_validator.plot_xdf_streams recording.xdf --streams "CGX Mobile-128 M128-DEMO" audio
+python3 -m xdf_validator.plot_xdf_streams recording.xdf --stream-type EEG --exclude-name-substring Impedance
+```
+
+```
+usage: plot_xdf_streams.py [-h] [--streams STREAMS [STREAMS ...]]
+                           [--stream-type STREAM_TYPE]
+                           [--exclude-name-substring EXCLUDE_NAME_SUBSTRING]
+                           xdf_file
+
+positional arguments:
+  xdf_file              Path to a single .xdf file to plot
+
+options:
+  --streams STREAMS [STREAMS ...]
+                        Only plot streams with these exact names. Default: all matching streams
+  --stream-type STREAM_TYPE
+                        Only plot streams of this type (e.g. EEG). Default: all types
+  --exclude-name-substring EXCLUDE_NAME_SUBSTRING
+                        Exclude streams whose name contains this substring (e.g. impedance checks)
+```
+
+The desktop app's **Plot Streams...** button does the same thing interactively: pick a
+file, check which streams to plot from a list populated by a quick metadata-only scan
+(no sample data is loaded until you actually plot), then click **Plot**.
 
 
 ## LSL Monitor

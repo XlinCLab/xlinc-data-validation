@@ -1,9 +1,11 @@
 import numpy as np
 from pyxdf import load_xdf
 
-from xdf_validator.constants import (INFO_HOSTNAME, INFO_NAME,
-                                     INFO_NOMINAL_SRATE, INFO_TYPE,
-                                     STREAM_INFO, STREAM_TIME_STAMPS)
+from xdf_validator.constants import (INFO_CHANNEL, INFO_CHANNELS, INFO_DESC,
+                                     INFO_HOSTNAME, INFO_LABEL, INFO_NAME,
+                                     INFO_NOMINAL_SRATE, INFO_TYPE, INFO_UNIT,
+                                     STREAM_INFO, STREAM_TIME_SERIES,
+                                     STREAM_TIME_STAMPS)
 
 FAIL_PREFIXES = ("SEVERE", "CORRUPT", "NO DATA", "FAILED")
 
@@ -68,6 +70,76 @@ class XDFStream:
         if len(timestamps) < 2:
             return 0.0
         return float(timestamps[-1] - timestamps[0])
+
+    def _raw_channel_field(self, field: str) -> list[str]:
+        """
+        Per-channel string field extraction from info.desc.channels.channel[]
+        (e.g. "label" or "unit"), with no fallback -- used internally both 
+        to disambiguate time_series orientation and to look up channel labels/units.
+        Returns [] if the metadata is absent or malformed (e.g. irregular
+        streams typically don't declare per-channel metadata at all).
+        """
+        desc = self._stream.get(STREAM_INFO, {}).get(INFO_DESC, [])
+        if isinstance(desc, list) and len(desc) > 0:
+            desc = desc[0]
+        channels = desc.get(INFO_CHANNELS, {}) if isinstance(desc, dict) else {}
+        if isinstance(channels, list) and len(channels) > 0:
+            channels = channels[0]
+        channels = channels.get(INFO_CHANNEL, []) if isinstance(channels, dict) else []
+
+        values = []
+        for channel in channels:
+            value = channel.get(field) if isinstance(channel, dict) else None
+            if isinstance(value, list):
+                value = value[0] if value else ""
+            values.append(str(value) if value else "")
+        return values
+
+    def _raw_channel_labels(self) -> list[str]:
+        return self._raw_channel_field(INFO_LABEL)
+
+    @property
+    def time_series(self) -> np.ndarray:
+        """
+        Sample data as a (n_samples, n_channels) array.
+        pyxdf normally already returns this shape;
+        the channel-label count (when available) is used to catch the rare
+        case where it comes back transposed.
+        """
+        samples = np.asarray(self._stream.get(STREAM_TIME_SERIES, []))
+        if samples.ndim == 1:
+            samples = samples[:, None]
+        labels = self._raw_channel_labels()
+        if len(labels) and len(labels) == samples.shape[0] and len(labels) != samples.shape[1]:
+            samples = samples.T
+        return samples
+
+    @property
+    def n_channels(self) -> int:
+        time_series = self.time_series
+        return time_series.shape[1] if time_series.ndim == 2 else 1
+
+    @property
+    def channel_labels(self) -> list[str]:
+        """Per-channel labels, falling back to "Ch 0", "Ch 1", ... if the stream's
+        metadata doesn't declare a usable label for every channel."""
+        labels = self._raw_channel_labels()
+        n_channels = self.n_channels
+        if len(labels) == n_channels and all(labels):
+            return labels
+        return [f"Ch {i}" for i in range(n_channels)]
+
+    @property
+    def channel_units(self) -> list[str]:
+        """
+        Per-channel unit strings (e.g. "microvolts", "kohms").
+        Returns empty strings for channels without a declared unit.
+        """
+        units = self._raw_channel_field(INFO_UNIT)
+        n_channels = self.n_channels
+        if len(units) == n_channels:
+            return units
+        return [""] * n_channels
 
     def summarize_gaps(self) -> dict:
         """Summarize sample-timing quality: gap count/size, effective vs. nominal rate, and
