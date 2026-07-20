@@ -21,20 +21,24 @@ Requires Python 3.11+.
 ```bash
 git clone <repo-url>
 cd xlinc-data-validation
-./setup.sh
+python setup.py
 ```
 
-`setup.sh` creates a `.venv`, activates it, and installs everything in `requirements.txt`.
-To do it manually instead:
+`setup.py` creates a `.venv` and install all Python dependencies listed in `requirements.txt`.
 
-```bash
-python3.11 -m venv .venv
-source .venv/bin/activate      # on Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-Activate the virtual environment (`source .venv/bin/activate`) in any new terminal session
+### Activate environment
+Activate the virtual environment in any new terminal session
 before running any of the tools below.
+
+MacOS / Linux:
+```bash
+source .venv/bin/activate
+```
+
+Windows:
+```bash
+.venv\Scripts\activate
+```
 
 
 ## XDF Validator
