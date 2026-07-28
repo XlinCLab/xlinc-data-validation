@@ -23,6 +23,7 @@ from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QApplication
 
 from shared.colors import COLOR_FAIL
+from xdf_validator.constants import UNIT_ABBREVIATIONS
 from xdf_validator.xdf_utils import XDFFile, XDFStream
 
 # Percentile-based per-channel amplitude estimate used to size the vertical offset between
@@ -32,6 +33,13 @@ CHANNEL_OFFSET_SPACING = 4.0
 GAP_HIGHLIGHT_ALPHA = 80  # 0-255
 
 
+def _format_unit(unit: str) -> str:
+    """Abbreviate a unit string for compact axis/tick labels."""
+    if not unit:
+        return ""
+    return UNIT_ABBREVIATIONS.get(unit.lower(), unit)
+
+
 def _channel_scale(channel: np.ndarray) -> float:
     """Robust per-channel amplitude estimate (median-centered percentile), used to size
     the vertical spacing between stacked traces."""
@@ -39,47 +47,50 @@ def _channel_scale(channel: np.ndarray) -> float:
     return scale if scale > 0 else 1.0
 
 
-def _axis_label(name: str, unit: str, scale: float = None) -> str:
-    """Build a Y-axis label combining a name, its unit (if known), and -- for stacked
-    multi-channel panels -- the real-world scale one channel's stacking offset
-    represents, so the axis conveys actual values/units rather than just an identity."""
-    text = f"{name} ({unit})" if unit else name
-    if scale is not None:
-        text += f"  [~{scale:.3g} {unit or 'units'} per channel division]"
-    return text
+def _axis_label(stream_type: str, unit: str) -> str:
+    """Short Y-axis label: stream type plus its unit, e.g. 'EEG (μV)'."""
+    unit_abbrev = _format_unit(unit)
+    return f"{stream_type} ({unit_abbrev})" if unit_abbrev else stream_type
 
 
-def _plot_regular_stream(plot_item, stream: XDFStream, t: np.ndarray, stream_offset: float):
-    """Draw a regularly-sampled stream, stacking multiple channels with a vertical offset
-    (Y-axis ticks labeled per channel, axis label giving the unit and the real-world
-    scale that offset represents) and shading any detected gaps."""
+def _plot_regular_stream(
+        plot_item,
+        stream: XDFStream,
+        t: np.ndarray,
+        stream_offset: float,
+        channel_indices: list[int] = None,
+    ):
+    """Draw a regularly-sampled stream, stacking the selected channels (all of them if
+    channel_indices is None) with a vertical offset. Each channel's Y-axis tick gives its
+    name and its own real-world amplitude scale (e.g. "Fp1 (±120μV)"), so the
+    axis conveys actual values rather than just channel identity. Also shades any detected gaps."""
     time_series = stream.time_series
     labels = stream.channel_labels
     units = stream.channel_units
     unit = next((u for u in units if u), "")
-    n_channels = stream.n_channels
+    if channel_indices is None:
+        channel_indices = list(range(stream.n_channels))
 
     offsets = []
-    scales = []
+    tick_labels = []
     running_offset = 0.0
-    for ch in range(n_channels):
+    for ch in channel_indices:
         channel_data = time_series[:, ch].astype(np.float64)
         centered = channel_data - np.median(channel_data)
         plot_item.plot(
             t, centered + running_offset,
-            pen=pg.intColor(ch, hues=max(n_channels, 1)),
+            pen=pg.intColor(ch, hues=max(stream.n_channels, 1)),
             autoDownsample=True,
         )
-        offsets.append(running_offset)
         scale = _channel_scale(channel_data)
-        scales.append(scale)
+        channel_unit = _format_unit(units[ch] if ch < len(units) else unit)
+        unit_suffix = channel_unit or "units"
+        tick_labels.append(f"{labels[ch]} (±{scale:.3g}{unit_suffix})")
+        offsets.append(running_offset)
         running_offset += scale * CHANNEL_OFFSET_SPACING
 
-    if n_channels > 1:
-        plot_item.getAxis('left').setTicks([list(zip(offsets, labels))])
-        plot_item.setLabel('left', _axis_label(stream.name, unit, scale=float(np.median(scales))))
-    else:
-        plot_item.setLabel('left', _axis_label(labels[0] if labels else stream.name, unit))
+    plot_item.setLabel('left', _axis_label(stream.type, unit))
+    plot_item.getAxis('left').setTicks([list(zip(offsets, tick_labels))])
 
     # locate_gaps() reports gap times relative to this stream's own start; shift by
     # stream_offset (this stream's start relative to the plot's shared time origin) so
@@ -103,11 +114,20 @@ def _plot_irregular_stream(plot_item, stream: XDFStream, t: np.ndarray):
     plot_item.getAxis('left').setTicks([[(0, 'event')]])
 
 
-def build_stream_plot(streams: list[XDFStream]) -> pg.GraphicsLayoutWidget:
+def build_stream_plot(
+        streams: list[XDFStream],
+        channel_selections: list[list[int]] = None,
+    ) -> pg.GraphicsLayoutWidget:
     """Build a multi-panel plot of the given streams: one row per stream, all sharing a
-    single synchronized time axis but each keeping its own labeled Y-axis."""
+    single synchronized time axis but each keeping its own labeled Y-axis.
+
+    channel_selections, if given, must be the same length as streams: each entry is
+    either None (plot all of that stream's channels) or a list of channel indices to
+    plot for that stream. Only relevant for regularly-sampled, multi-channel streams."""
     if not streams:
         raise ValueError("No streams to plot")
+    if channel_selections is None:
+        channel_selections = [None] * len(streams)
 
     t0_candidates = [s.time_stamps[0] for s in streams if s.n_samples > 0]
     if not t0_candidates:
@@ -133,7 +153,7 @@ def build_stream_plot(streams: list[XDFStream]) -> pg.GraphicsLayoutWidget:
         t = stream.time_stamps - t0
         stream_offset = (stream.time_stamps[0] - t0) if stream.n_samples > 0 else 0.0
         if stream.is_regular:
-            _plot_regular_stream(plot_item, stream, t, stream_offset)
+            _plot_regular_stream(plot_item, stream, t, stream_offset, channel_selections[i])
         else:
             _plot_irregular_stream(plot_item, stream, t)
 

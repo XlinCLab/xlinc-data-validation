@@ -15,3 +15,15 @@ INFO_CHANNELS = "channels"
 INFO_CHANNEL = "channel"
 INFO_LABEL = "label"
 INFO_UNIT = "unit"
+
+# Mapping of stream unit labels to abbreviations
+UNIT_ABBREVIATIONS = {
+    "microvolts": "μV",
+    "millivolts": "mV",
+    "volts": "V",
+    "kohms": "kΩ",
+    "ohms": "Ω",
+    "hertz": "Hz",
+    "millimeters": "mm",
+    "pixels": "px",
+}
