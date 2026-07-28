@@ -4,6 +4,7 @@ from pyxdf import load_xdf
 from xdf_validator.constants import (INFO_CHANNEL, INFO_CHANNELS, INFO_DESC,
                                      INFO_HOSTNAME, INFO_LABEL, INFO_NAME,
                                      INFO_NOMINAL_SRATE, INFO_TYPE, INFO_UNIT,
+                                     STREAM_CLOCK_TIMES, STREAM_CLOCK_VALUES,
                                      STREAM_INFO, STREAM_TIME_SERIES,
                                      STREAM_TIME_STAMPS)
 
@@ -70,6 +71,35 @@ class XDFStream:
         if len(timestamps) < 2:
             return 0.0
         return float(timestamps[-1] - timestamps[0])
+
+    @property
+    def clock_times(self) -> np.ndarray:
+        """Local times (on this stream's own local clock) at which a clock-offset calibration
+        measurement was taken during recording (periodic LSL clock-sync pings)."""
+        return np.asarray(self._stream.get(STREAM_CLOCK_TIMES, []), dtype=np.float64)
+
+    @property
+    def clock_values(self) -> np.ndarray:
+        """Measured clock offset at each of clock_times: the correction pyxdf applies
+        (when loaded with synchronize_clocks=True) to map this stream's local clock onto
+        the file's shared clock."""
+        return np.asarray(self._stream.get(STREAM_CLOCK_VALUES, []), dtype=np.float64)
+
+    def summarize_clock_offsets(self) -> dict:
+        """Summarize this stream's clock-offset calibration measurements."""
+        values = self.clock_values
+        n = len(values)
+        if n == 0:
+            return {
+                "n_measurements": 0,
+                "mean_offset": 0.0,
+                "drift": 0.0,
+            }
+        return {
+            "n_measurements": n,
+            "mean_offset": float(np.mean(values)),
+            "drift": float(values[-1] - values[0]) if n > 1 else 0.0,
+        }
 
     def _raw_channel_field(self, field: str) -> list[str]:
         """

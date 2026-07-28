@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (QFileDialog, QHBoxLayout, QLabel, QLineEdit,
                              QPushButton, QSplitter, QStatusBar, QTreeWidget,
                              QTreeWidgetItem, QVBoxLayout, QWidget)
 
+from xdf_validator.gui.clock_offsets_window import ClockOffsetsWindow
 from xdf_validator.gui.constants import (DEFAULT_REPORT_FILENAME,
                                          RESULT_COLUMNS, VERDICT_COLOR_FAIL,
                                          VERDICT_COLOR_OK, VERDICT_COLOR_WARN,
@@ -36,6 +37,7 @@ class MainWindow(QMainWindow):
         self.results: list[dict] = []
         self.worker: ValidationWorker = None
         self.plot_window: PlotWindow = None
+        self.clock_offsets_window: ClockOffsetsWindow = None
         self._cancel_requested = False
 
         self._build_ui()
@@ -76,20 +78,29 @@ class MainWindow(QMainWindow):
         self.clear_button.clicked.connect(self._on_clear_files)
         self.plot_streams_button = QPushButton("Plot Streams...")
         self.plot_streams_button.clicked.connect(self._on_plot_streams)
+        self.clock_offsets_button = QPushButton("Clock Offsets...")
+        self.clock_offsets_button.clicked.connect(self._on_clock_offsets)
         file_controls.addWidget(self.add_button)
         file_controls.addWidget(self.remove_button)
         file_controls.addWidget(self.clear_button)
         file_controls.addWidget(self.plot_streams_button)
+        file_controls.addWidget(self.clock_offsets_button)
         file_controls.addStretch()
         return file_controls
 
     def _on_plot_streams(self):
-        # A new window each click, so that the user can have more 
+        # A new window each click, so that the user can have more
         # than one open at a time, e.g. to compare two files side by side.
         self.plot_window = PlotWindow(self, available_files=list(self.xdf_files))
         self.plot_window.show()
         self.plot_window.raise_()
         self.plot_window.activateWindow()
+
+    def _on_clock_offsets(self):
+        self.clock_offsets_window = ClockOffsetsWindow(self, available_files=list(self.xdf_files))
+        self.clock_offsets_window.show()
+        self.clock_offsets_window.raise_()
+        self.clock_offsets_window.activateWindow()
 
     def _build_filter_controls(self) -> QHBoxLayout:
         filter_controls = QHBoxLayout()

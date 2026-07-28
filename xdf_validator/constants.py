@@ -3,6 +3,10 @@ STREAM_TIME_SERIES = "time_series"
 STREAM_TIME_STAMPS = "time_stamps"
 STREAM_INFO = "info"
 
+# Raw clock-offset calibration measurements
+STREAM_CLOCK_TIMES = "clock_times"
+STREAM_CLOCK_VALUES = "clock_values"
+
 # Keys within a stream's "info" metadata dict
 INFO_NAME = "name"
 INFO_TYPE = "type"

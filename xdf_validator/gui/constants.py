@@ -11,6 +11,15 @@ PLOT_WINDOW_TITLE = "Plot XDF Streams"
 PLOT_WINDOW_WIDTH = 1100
 PLOT_WINDOW_HEIGHT = 700
 
+CLOCK_OFFSETS_WINDOW_TITLE = "XDF Clock Offsets"
+CLOCK_OFFSETS_WINDOW_WIDTH = 900
+CLOCK_OFFSETS_WINDOW_HEIGHT = 650
+
+# QTreeWidget column order/labels for the clock-offset calibration measurements: each
+# stream is a top-level row (name/type, measurement count, mean/drift summary) with one
+# child row per individual calibration measurement (index, local time, offset).
+CLOCK_OFFSETS_COLUMNS = ["Stream / Measurement", "Local Time (s)", "Offset (s)"]
+
 XDF_FILE_FILTER = "XDF files (*.xdf);;All files (*)"
 
 # Plot export formats

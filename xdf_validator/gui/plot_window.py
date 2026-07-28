@@ -13,7 +13,7 @@ from xdf_validator.gui.constants import (PLOT_EXPORT_DEFAULT_EXTENSION,
                                          PLOT_EXPORT_FILTER,
                                          PLOT_WINDOW_HEIGHT, PLOT_WINDOW_TITLE,
                                          PLOT_WINDOW_WIDTH, XDF_FILE_FILTER)
-from xdf_validator.gui.worker import PlotLoadWorker, StreamResolveWorker
+from xdf_validator.gui.worker import StreamLoadWorker, StreamResolveWorker
 from xdf_validator.plot_xdf_streams import build_stream_plot
 from xdf_validator.xdf_utils import XDFStream
 
@@ -33,7 +33,7 @@ class PlotWindow(QDialog):
         self.resize(PLOT_WINDOW_WIDTH, PLOT_WINDOW_HEIGHT)
 
         self.resolve_worker: StreamResolveWorker = None
-        self.load_worker: PlotLoadWorker = None
+        self.load_worker: StreamLoadWorker = None
         self.plot_widget: QWidget = None
         self.loaded_streams: list[XDFStream] = []
 
@@ -171,7 +171,7 @@ class PlotWindow(QDialog):
         self.channel_tree.clear()
         self.status_label.setText(f"Loading {len(stream_ids)} stream(s)...")
 
-        self.load_worker = PlotLoadWorker(self.file_combo.currentText(), stream_ids)
+        self.load_worker = StreamLoadWorker(self.file_combo.currentText(), stream_ids)
         self.load_worker.loaded.connect(self._on_streams_loaded)
         self.load_worker.failed.connect(self._on_load_failed)
         self.load_worker.start()

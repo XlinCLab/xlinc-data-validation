@@ -65,11 +65,8 @@ class StreamResolveWorker(QThread):
         self.resolved.emit(streams)
 
 
-class PlotLoadWorker(QThread):
-    """Loads only selected streams' full sample data on a background
-    thread, then emits the resulting XDFStream objects.
-    Plot construction itself stays on the GUI thread, 
-    since pyqtgraph widgets must be built there."""
+class StreamLoadWorker(QThread):
+    """Loads only selected streams' full sample data on a background thread."""
 
     loaded = pyqtSignal(list)
     failed = pyqtSignal(str)
