@@ -13,6 +13,10 @@ PLOT_WINDOW_HEIGHT = 700
 
 XDF_FILE_FILTER = "XDF files (*.xdf);;All files (*)"
 
+# Plot export formats
+PLOT_EXPORT_FILTER = "PNG Image (*.png);;JPEG Image (*.jpg)"
+PLOT_EXPORT_DEFAULT_EXTENSION = ".png"
+
 # QTreeWidget column order/labels for the per-stream validation results. The verdict is
 # always the last column; code that styles/locates it uses len(RESULT_COLUMNS) - 1 rather
 # than a hardcoded index, so reordering/adding columns here doesn't require other changes.

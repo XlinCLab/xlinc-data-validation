@@ -1,12 +1,17 @@
 """Plot window for the XDF validation desktop GUI: select a file, select streams and channels to plot, and view them on a synchronized time axis."""
 
+import os
+
+import pyqtgraph.exporters
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (QComboBox, QDialog, QFileDialog, QHBoxLayout,
                              QLabel, QListWidget, QListWidgetItem, QMessageBox,
                              QPushButton, QTreeWidget, QTreeWidgetItem,
                              QVBoxLayout, QWidget)
 
-from xdf_validator.gui.constants import (PLOT_WINDOW_HEIGHT, PLOT_WINDOW_TITLE,
+from xdf_validator.gui.constants import (PLOT_EXPORT_DEFAULT_EXTENSION,
+                                         PLOT_EXPORT_FILTER,
+                                         PLOT_WINDOW_HEIGHT, PLOT_WINDOW_TITLE,
                                          PLOT_WINDOW_WIDTH, XDF_FILE_FILTER)
 from xdf_validator.gui.worker import PlotLoadWorker, StreamResolveWorker
 from xdf_validator.plot_xdf_streams import build_stream_plot
@@ -99,6 +104,11 @@ class PlotWindow(QDialog):
         self.plot_button.clicked.connect(self._on_plot_clicked)
         self.plot_button.setEnabled(False)
         channel_panel.addWidget(self.plot_button)
+
+        self.save_plot_button = QPushButton("Save Plot...")
+        self.save_plot_button.clicked.connect(self._on_save_plot_clicked)
+        self.save_plot_button.setEnabled(False)
+        channel_panel.addWidget(self.save_plot_button)
 
         widget = QWidget()
         widget.setLayout(channel_panel)
@@ -239,4 +249,25 @@ class PlotWindow(QDialog):
             self.plot_widget.deleteLater()
         self.plot_widget = widget
         self.plot_container.addWidget(self.plot_widget)
+        self.save_plot_button.setEnabled(True)
         self.status_label.setText(f"Plotted {len(streams_to_plot)} stream(s)")
+
+    def _on_save_plot_clicked(self):
+        if self.plot_widget is None:
+            return
+
+        xdf_name = os.path.splitext(os.path.basename(self.file_combo.currentText()))[0]
+        default_name = f"{xdf_name}_plot{PLOT_EXPORT_DEFAULT_EXTENSION}"
+        path, _ = QFileDialog.getSaveFileName(self, "Save Plot", default_name, PLOT_EXPORT_FILTER)
+        if not path:
+            return
+        if not os.path.splitext(path)[1]:
+            path += PLOT_EXPORT_DEFAULT_EXTENSION
+
+        try:
+            exporter = pyqtgraph.exporters.ImageExporter(self.plot_widget.scene())
+            exporter.export(path)
+        except Exception as exc:
+            self.status_label.setText(f"Failed to save plot: {exc}")
+            return
+        self.status_label.setText(f"Plot saved to {path}")
