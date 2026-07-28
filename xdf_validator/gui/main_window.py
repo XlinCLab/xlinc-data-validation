@@ -15,6 +15,7 @@ from xdf_validator.gui.constants import (DEFAULT_REPORT_FILENAME,
                                          WARN_SUBSTRINGS, WINDOW_HEIGHT,
                                          WINDOW_TITLE, WINDOW_WIDTH,
                                          XDF_FILE_FILTER)
+from xdf_validator.gui.plot_window import PlotWindow
 from xdf_validator.gui.worker import ValidationWorker
 from xdf_validator.validate_xdf import format_report
 from xdf_validator.xdf_utils import FAIL_PREFIXES
@@ -34,6 +35,7 @@ class MainWindow(QMainWindow):
         self.xdf_files: list[str] = []
         self.results: list[dict] = []
         self.worker: ValidationWorker = None
+        self.plot_window: PlotWindow = None
         self._cancel_requested = False
 
         self._build_ui()
@@ -72,11 +74,22 @@ class MainWindow(QMainWindow):
         self.remove_button.clicked.connect(self._on_remove_selected)
         self.clear_button = QPushButton("Clear All")
         self.clear_button.clicked.connect(self._on_clear_files)
+        self.plot_streams_button = QPushButton("Plot Streams...")
+        self.plot_streams_button.clicked.connect(self._on_plot_streams)
         file_controls.addWidget(self.add_button)
         file_controls.addWidget(self.remove_button)
         file_controls.addWidget(self.clear_button)
+        file_controls.addWidget(self.plot_streams_button)
         file_controls.addStretch()
         return file_controls
+
+    def _on_plot_streams(self):
+        # A new window each click, so that the user can have more 
+        # than one open at a time, e.g. to compare two files side by side.
+        self.plot_window = PlotWindow(self, available_files=list(self.xdf_files))
+        self.plot_window.show()
+        self.plot_window.raise_()
+        self.plot_window.activateWindow()
 
     def _build_filter_controls(self) -> QHBoxLayout:
         filter_controls = QHBoxLayout()

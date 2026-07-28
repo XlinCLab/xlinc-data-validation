@@ -3,3 +3,4 @@ pylsl
 pyxdf
 PyYAML
 PyQt6
+pyqtgraph

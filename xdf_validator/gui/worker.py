@@ -1,8 +1,11 @@
-"""Background thread for running XDF validation without blocking the GUI."""
+"""Background threads for running XDF validation and stream plotting without blocking
+the GUI."""
 
 from PyQt6.QtCore import QThread, pyqtSignal
+from pyxdf import resolve_streams
 
 from xdf_validator.validate_xdf import validate_xdf_file
+from xdf_validator.xdf_utils import XDFFile
 
 
 class ValidationWorker(QThread):
@@ -40,3 +43,51 @@ class ValidationWorker(QThread):
                 exclude_name_substring=self.exclude_name_substring,
             )
             self.file_validated.emit(result)
+
+
+class StreamResolveWorker(QThread):
+    """Resolves an XDF file's stream metadata (name/type/hostname/rate/stream_id) on a
+    background thread without loading any sample data, via pyxdf.resolve_streams()."""
+
+    resolved = pyqtSignal(list)
+    failed = pyqtSignal(str)
+
+    def __init__(self, path: str, parent=None):
+        super().__init__(parent)
+        self.path = path
+
+    def run(self):
+        try:
+            streams = resolve_streams(self.path)
+        except Exception as exc:
+            self.failed.emit(str(exc))
+            return
+        self.resolved.emit(streams)
+
+
+class PlotLoadWorker(QThread):
+    """Loads only selected streams' full sample data on a background
+    thread, then emits the resulting XDFStream objects.
+    Plot construction itself stays on the GUI thread, 
+    since pyqtgraph widgets must be built there."""
+
+    loaded = pyqtSignal(list)
+    failed = pyqtSignal(str)
+
+    def __init__(self, path: str, stream_ids: list[int], parent=None):
+        super().__init__(parent)
+        self.path = path
+        self.stream_ids = stream_ids
+
+    def run(self):
+        try:
+            xdf = XDFFile(
+                path=self.path,
+                select_streams=self.stream_ids,
+                synchronize_clocks=True,
+                verbose=False,
+            )
+        except Exception as exc:
+            self.failed.emit(str(exc))
+            return
+        self.loaded.emit(xdf.streams)
