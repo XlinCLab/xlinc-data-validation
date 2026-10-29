@@ -3,9 +3,8 @@ the GUI."""
 
 from PyQt6.QtCore import QThread, pyqtSignal
 from pyxdf import resolve_streams
-
-from xdf_validator.validate_xdf import validate_xdf_file
-from xdf_validator.xdf_utils import XDFFile
+from xdf_tools.file import XDFFile
+from xdf_tools.timing import validate_xdf_file
 
 
 class ValidationWorker(QThread):

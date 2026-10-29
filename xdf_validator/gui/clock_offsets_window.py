@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (QComboBox, QDialog, QFileDialog, QHBoxLayout,
                              QLabel, QListWidget, QListWidgetItem, QMessageBox,
                              QPushButton, QTreeWidget, QTreeWidgetItem,
                              QVBoxLayout, QWidget)
+from xdf_tools.stream import XDFStream
 
 from xdf_validator.gui.constants import (CLOCK_OFFSETS_COLUMNS,
                                          CLOCK_OFFSETS_WINDOW_HEIGHT,
@@ -14,7 +15,6 @@ from xdf_validator.gui.constants import (CLOCK_OFFSETS_COLUMNS,
                                          CLOCK_OFFSETS_WINDOW_WIDTH,
                                          XDF_FILE_FILTER)
 from xdf_validator.gui.worker import StreamLoadWorker, StreamResolveWorker
-from xdf_validator.xdf_utils import XDFStream
 
 STREAM_ID_ROLE = Qt.ItemDataRole.UserRole
 PANEL_MAX_WIDTH = 280

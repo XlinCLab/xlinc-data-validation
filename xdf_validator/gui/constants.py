@@ -47,7 +47,7 @@ VERDICT_COLOR_WARN = COLOR_WARN
 VERDICT_COLOR_OK = COLOR_OK
 
 # Verdict substrings shown in the "warn" color even though the overall file still passes
-# (see xdf_utils.FAIL_PREFIXES for the actual pass/fail cutoff).
+# (see xdf_tools.timing.FAIL_PREFIXES for the actual pass/fail cutoff).
 WARN_SUBSTRINGS = ("SUSTAINED RATE MISMATCH", "HIGH JITTER", "salvageable")
 
 DEFAULT_REPORT_FILENAME = "xdf_validation_report.txt"

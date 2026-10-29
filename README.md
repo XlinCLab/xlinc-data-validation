@@ -20,12 +20,13 @@ Tools for working with laboratory data collected via LabStreamingLayer (LSL):
 Requires Python 3.11+.
 
 ```bash
-git clone <repo-url>
+git clone --recurse-submodules <repo-url>
 cd xlinc-data-validation
 python setup.py
 ```
 
-`setup.py` creates a `.venv` and install all Python dependencies listed in `requirements.txt`.
+`setup.py` fetches the Git submodule [`libs/xdf-tools`](./libs/xdf-tools/) ([`xdf-tools`](https://github.com/XlinCLab/xdf-tools), which loads XDF files and implements the timing checks and stream plots used here), creates a `.venv` and installs all Python dependencies listed in `requirements.txt`, including `xdf-tools` as an editable package.
+If the repository was cloned without `--recurse-submodules`, `setup.py` fetches the submodule; to do so manually, run `git submodule update --init --recursive`.
 
 ### Activate environment
 Activate the virtual environment in any new terminal session
@@ -120,16 +121,16 @@ ticks rather than a continuous waveform. Any gaps detected by the validation che
 are shaded directly on the plot.
 
 ```bash
-python3 -m xdf_validator.plot_xdf_streams recording.xdf
-python3 -m xdf_validator.plot_xdf_streams recording.xdf --streams "CGX Mobile-128 M128-DEMO" audio
-python3 -m xdf_validator.plot_xdf_streams recording.xdf --stream-type EEG --exclude-name-substring Impedance
+python3 -m xdf_tools.plotting recording.xdf
+python3 -m xdf_tools.plotting recording.xdf --streams "CGX Mobile-128 M128-DEMO" audio
+python3 -m xdf_tools.plotting recording.xdf --stream-type EEG --exclude-name-substring Impedance
 ```
 
 ```
-usage: plot_xdf_streams.py [-h] [--streams STREAMS [STREAMS ...]]
-                           [--stream-type STREAM_TYPE]
-                           [--exclude-name-substring EXCLUDE_NAME_SUBSTRING]
-                           xdf_file
+usage: plotting.py [-h] [--streams STREAMS [STREAMS ...]]
+                    [--stream-type STREAM_TYPE]
+                    [--exclude-name-substring EXCLUDE_NAME_SUBSTRING]
+                    xdf_file
 
 positional arguments:
   xdf_file              Path to a single .xdf file to plot

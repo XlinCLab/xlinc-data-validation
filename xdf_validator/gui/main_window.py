@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (QFileDialog, QHBoxLayout, QLabel, QLineEdit,
                              QListWidget, QMainWindow, QMessageBox,
                              QPushButton, QSplitter, QStatusBar, QTreeWidget,
                              QTreeWidgetItem, QVBoxLayout, QWidget)
+from xdf_tools.timing import FAIL_PREFIXES, format_report
 
 from xdf_validator.gui.clock_offsets_window import ClockOffsetsWindow
 from xdf_validator.gui.constants import (DEFAULT_REPORT_FILENAME,
@@ -18,8 +19,6 @@ from xdf_validator.gui.constants import (DEFAULT_REPORT_FILENAME,
                                          XDF_FILE_FILTER)
 from xdf_validator.gui.plot_window import PlotWindow
 from xdf_validator.gui.worker import ValidationWorker
-from xdf_validator.validate_xdf import format_report
-from xdf_validator.xdf_utils import FAIL_PREFIXES
 
 VERDICT_COLUMN = len(RESULT_COLUMNS) - 1
 

@@ -8,14 +8,14 @@ from PyQt6.QtWidgets import (QComboBox, QDialog, QFileDialog, QHBoxLayout,
                              QLabel, QListWidget, QListWidgetItem, QMessageBox,
                              QPushButton, QTreeWidget, QTreeWidgetItem,
                              QVBoxLayout, QWidget)
+from xdf_tools.plotting import build_stream_plot
+from xdf_tools.stream import XDFStream
 
 from xdf_validator.gui.constants import (PLOT_EXPORT_DEFAULT_EXTENSION,
                                          PLOT_EXPORT_FILTER,
                                          PLOT_WINDOW_HEIGHT, PLOT_WINDOW_TITLE,
                                          PLOT_WINDOW_WIDTH, XDF_FILE_FILTER)
 from xdf_validator.gui.worker import StreamLoadWorker, StreamResolveWorker
-from xdf_validator.plot_xdf_streams import build_stream_plot
-from xdf_validator.xdf_utils import XDFStream
 
 STREAM_ID_ROLE = Qt.ItemDataRole.UserRole
 CHANNEL_INDEX_ROLE = Qt.ItemDataRole.UserRole

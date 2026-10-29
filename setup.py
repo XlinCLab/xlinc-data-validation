@@ -28,7 +28,8 @@ def venv_python(venv_dir: Path) -> Path:
 
 def run(cmd: list[str]) -> None:
     print(f"\n$ {' '.join(str(c) for c in cmd)}")
-    subprocess.run(cmd, check=True)
+    # Relative paths in requirements.txt (the libs/ submodules) are resolved from the repository root
+    subprocess.run(cmd, check=True, cwd=ROOT)
 
 
 def main() -> int:
@@ -46,6 +47,9 @@ def main() -> int:
     if not python.exists():
         print(f"error: expected Python at {python} but it was not found", file=sys.stderr)
         return 1
+
+    # Fetch the git submodules, which are installed into the environment below
+    run(["git", "submodule", "update", "--init", "--recursive"])
 
     # Upgrade packaging tools, then install dependencies.
     run([str(python), "-m", "pip", "install", "-U", "pip", "setuptools", "wheel"])

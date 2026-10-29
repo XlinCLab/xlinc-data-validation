@@ -1,6 +1,7 @@
 numpy
 pylsl
-pyxdf
+pyxdf>=1.18.0
 PyYAML
 PyQt6
 pyqtgraph
+-e ./libs/xdf-tools[plot]
